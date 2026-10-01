@@ -59,9 +59,9 @@
      3. Typography
      ============================================================ */
   --el-font-family:        var(--font-sans);
-  --el-font-size-base:     var(--text-base);   /* 14px */
-  --el-font-size-small:    var(--text-sm);     /* 13px */
-  --el-font-size-extra-small: var(--text-xs);  /* 12px */
+  --el-font-size-base:     var(--text-base);   /* 16px */
+  --el-font-size-small:    var(--text-sm);     /* 15px */
+  --el-font-size-extra-small: var(--text-xs);  /* 14px */
 
   /* ============================================================
      4. Border Radius
@@ -175,11 +175,13 @@
   --el-table-header-text-color: var(--color-text-secondary);
   --el-table-row-hover-bg-color: var(--color-gray-100);
   font-size: var(--text-sm);
+  line-height: var(--leading-normal);
   --el-table-bg-color: transparent;
 }
 
 .el-table th.el-table__cell {
   font-size: var(--text-xs);
+  line-height: var(--leading-normal);
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -234,23 +236,67 @@
 }
 
 /* ============================================================
-   Input / Textarea — 暖色边框 + 圆角
+   Form — 更大字号、40px 控件高度、清晰标签与间距
    ============================================================ */
+.el-form {
+  --el-form-label-font-size: var(--text-sm);
+}
+.el-form-item {
+  margin-bottom: var(--space-4);
+}
+.el-form-item__label {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
 .el-input__wrapper,
+.el-select__wrapper,
 .el-textarea__inner {
+  min-height: 40px;
   border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+.el-textarea__inner {
+  min-height: 88px;
+  padding: 10px 12px;
 }
 .el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
 .el-textarea__inner:focus {
   box-shadow: 0 0 0 1px var(--color-accent-600) inset;
+}
+.el-button {
+  min-height: 36px;
+  font-size: var(--text-sm);
+}
+.el-button--small {
+  min-height: 32px;
+  font-size: var(--text-xs);
 }
 
 /* ============================================================
    Dialog — 圆润、柔和阴影
    ============================================================ */
 .el-dialog {
+  --el-dialog-padding-primary: var(--space-6);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
+}
+.el-dialog__title {
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+.el-dialog__body {
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--color-text-secondary);
+}
+.el-card {
+  border-radius: var(--radius-lg);
+}
+.el-card__body {
+  padding: var(--space-6);
 }
 .el-drawer {
   background: var(--color-bg);
@@ -262,6 +308,16 @@
 .el-message {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+.el-step__title {
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+.el-step__description {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
 }
 
 /* ============================================================
@@ -300,4 +356,33 @@
 /* 链接默认色 */
 a {
   color: var(--color-accent-600);
+}
+
+/* ============================================================
+   Responsive — 中窄屏保持可读，避免控件拥挤与遮挡
+   ============================================================ */
+@media (max-width: 768px) {
+  .el-dialog {
+    width: calc(100vw - 24px) !important;
+    margin-top: 5vh !important;
+    --el-dialog-padding-primary: var(--space-4);
+  }
+
+  .el-form-item__label {
+    width: 100% !important;
+    justify-content: flex-start;
+    margin-bottom: 6px;
+  }
+
+  .el-form-item__content {
+    margin-left: 0 !important;
+  }
+
+  .el-button + .el-button {
+    margin-left: var(--space-2);
+  }
+
+  .el-table {
+    font-size: var(--text-sm);
+  }
 }

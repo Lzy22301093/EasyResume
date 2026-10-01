@@ -4,8 +4,8 @@
  * 所有视觉设计变量集中定义于此。
  * 组件样式应引用这些变量，而非硬编码色值/间距等。
  *
- * 风格基调：Claude · 暖米色纸感 · 衬线标题 · 陶土橙强调
- * 参考：DESIGN.md · FResume 参考产品截图
+ * 风格基调：暖米纸感 · 衬线标题 · 陶土橙强调
+ * 详细规范见 docs/DESIGN.md
  */
 
 /* ============================================================
@@ -94,23 +94,23 @@
   /* ============================================================
      5. Typography — Font Size
      ============================================================ */
-  --text-2xs:  12px;   /* 时间戳、极次要元数据 */
-  --text-xs:   13px;   /* 标签文字、表格辅助信息 */
-  --text-sm:   14px;   /* 正文（对话消息、表格内容） */
-  --text-base: 15px;   /* 副标题、描述文字 */
-  --text-md:   17px;   /* 正文基准（简历内容） */
+  --text-2xs:  13px;   /* 时间戳、极次要元数据 */
+  --text-xs:   14px;   /* 标签文字、表格辅助信息 */
+  --text-sm:   15px;   /* 正文（对话消息、表格内容） */
+  --text-base: 16px;   /* 页面正文与表单基准 */
+  --text-md:   18px;   /* 长文本、简历内容与说明 */
   --text-lg:   22px;   /* 板块标题 */
   --text-xl:   26px;   /* 页面级标题 */
-  --text-2xl:  32px;   /* 大标题（功能墙/登录） */
+  --text-2xl:  32px;   /* 大标题（首页/登录） */
   --text-3xl:  40px;   /* 特大标题（Hero） */
   --text-4xl:  52px;   /* Hero 主标题 */
 
   /* ============================================================
      6. Typography — Line Height
      ============================================================ */
-  --leading-tight:  1.3;  /* 标题 */
-  --leading-normal: 1.5;  /* 表格 */
-  --leading-relaxed: 1.7; /* 正文 */
+  --leading-tight:  1.35; /* 标题 */
+  --leading-normal: 1.6;  /* 表格、表单 */
+  --leading-relaxed: 1.75; /* 长正文 */
 
   /* ============================================================
      7. Typography — Font Weight
@@ -181,6 +181,8 @@ body {
   background-color: var(--color-bg-page);
   color: var(--color-text-primary);
   font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -189,6 +191,7 @@ body {
 h1, h2, h3, h4 {
   font-family: var(--font-display);
   color: var(--color-text-primary);
+  line-height: var(--leading-tight);
 }
 
 /* 用衬线体作为大标题的便捷类 */
