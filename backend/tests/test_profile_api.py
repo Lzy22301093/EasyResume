@@ -62,3 +62,30 @@ async def test_api_returns_resume_source(client: AsyncClient, db_session: Sessio
     assert data["projects"] == []
     assert data["directions"] == []
     assert len(data["source_item_ids"]) == 1
+
+
+async def test_direction_api_manual_crud(client: AsyncClient):
+    created = await client.post("/api/profile/directions/manual", json={
+        "title": "产品运营",
+        "reason": "希望结合内容与用户增长",
+        "detail": "重点投递内容运营岗位",
+    })
+    assert created.status_code == 201
+    item = created.json()
+    assert item["payload_json"]["source_type"] == "user_manual"
+
+    listed = await client.get("/api/profile/directions")
+    assert listed.status_code == 200
+    assert listed.json()[0]["title"] == "产品运营"
+
+    updated = await client.patch(f"/api/profile/directions/{item['id']}", json={
+        "title": "用户运营",
+        "reason": "结合用户增长经验",
+        "detail": "更新详情",
+    })
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "用户运营"
+
+    deleted = await client.delete(f"/api/profile/directions/{item['id']}")
+    assert deleted.status_code == 204
+    assert (await client.get("/api/profile/directions")).json() == []

@@ -748,11 +748,45 @@ class DirectionCandidate(BaseModel):
     title: str = Field(..., description="岗位方向名称，如：后端开发工程师")
     reason: str = Field(..., description="推荐理由（为何适合该方向）")
     detail: str = Field(default="", description="方向详情/匹配点说明（对应参考图「查看详情」）")
+    basis_keys: list[str] = Field(default_factory=list, description="引用的画像依据 key，如 skill:12")
 
 
 class DirectionRecommendation(BaseModel):
     """画像方向推荐结果（LLM 结构化输出）。"""
     directions: list[DirectionCandidate] = Field(..., description="候选方向列表（3~8 条）")
+
+
+class DirectionRecommendationResult(BaseModel):
+    """带可解释依据的方向推荐 API 结果。"""
+
+    directions: list[dict[str, Any]] = Field(default_factory=list)
+    basis: list[dict[str, Any]] = Field(default_factory=list)
+    data_source: str = "个人画像（已确认条目）"
+    decision_logic: str = "画像证据匹配与职业赛道推断，不包含招聘市场统计或 JD 匹配"
+    profile_updated_at: datetime | None = None
+
+    def __iter__(self):
+        return iter(self.directions)
+
+    def __len__(self) -> int:
+        return len(self.directions)
+
+    def __getitem__(self, index):
+        return self.directions[index]
+
+
+class DirectionManualCreate(BaseModel):
+    """手动新增投递方向。"""
+    title: str = Field(..., min_length=1, max_length=100)
+    reason: str = Field(default="", max_length=1000)
+    detail: str = Field(default="", max_length=2000)
+
+
+class DirectionUpdate(BaseModel):
+    """编辑投递方向。"""
+    title: str | None = Field(default=None, min_length=1, max_length=100)
+    reason: str | None = Field(default=None, max_length=1000)
+    detail: str | None = Field(default=None, max_length=2000)
 
 
 class DirectionConfirmRequest(BaseModel):

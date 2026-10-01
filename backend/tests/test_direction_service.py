@@ -141,3 +141,75 @@ def test_confirm_idempotent_same_title(db_session: Session):
         .count()
     )
     assert count == 1
+
+
+async def test_recommend_exposes_basis_and_decision_boundary(db_session: Session):
+    skill_id = db_session.query(ProfileItem).filter(ProfileItem.title == "Python").one().id
+    llm = MockLLM([json.dumps({
+        "directions": [{
+            "title": "后端开发工程师",
+            "reason": "熟悉 Python",
+            "detail": "匹配 API 开发",
+            "basis_keys": [f"skill:{skill_id}"],
+        }]
+    }, ensure_ascii=False)])
+    out = await _svc().recommend_directions(db_session, 1, llm)
+    assert out.directions[0]["basis_keys"] == [f"skill:{skill_id}"]
+    assert out.basis[0]["item_id"] == skill_id
+    assert "个人画像" in out.data_source
+    assert "不包含招聘市场" in out.decision_logic
+
+
+async def test_rejects_unknown_basis_key(db_session: Session):
+    llm = MockLLM([json.dumps({
+        "directions": [{
+            "title": "产品经理",
+            "reason": "综合能力",
+            "detail": "匹配产品设计",
+            "basis_keys": ["skill:999999"],
+        }]
+    }, ensure_ascii=False)])
+    out = await _svc().recommend_directions(db_session, 1, llm)
+    assert out.directions[0]["basis_keys"] == []
+    assert out.basis == []
+
+
+def test_manual_create_update_delete(db_session: Session):
+    svc = _svc()
+    item = svc.create_manual_direction(db_session, 1, {
+        "title": "数据分析师",
+        "reason": "希望转向数据方向",
+        "detail": "重点投递数据分析岗位",
+    })
+    assert item.category == "target"
+    assert item.content == "希望转向数据方向"
+    assert item.payload_json
+    updated = svc.update_direction(db_session, 1, item.id, {
+        "title": "数据产品经理",
+        "reason": "结合业务与数据",
+        "detail": "更新后的方向详情",
+    })
+    assert updated.title == "数据产品经理"
+    assert updated.content == "结合业务与数据"
+    svc.delete_direction(db_session, 1, item.id)
+    assert db_session.get(ProfileItem, item.id) is None
+
+
+def test_manual_direction_rejects_duplicate_and_fourth_item(db_session: Session):
+    svc = _svc()
+    svc.create_manual_direction(db_session, 1, {"title": "方向一", "reason": "r1", "detail": "d1"})
+    with pytest.raises(DirectionError, match="已存在"):
+        svc.create_manual_direction(db_session, 1, {"title": "方向一", "reason": "r2", "detail": "d2"})
+    svc.create_manual_direction(db_session, 1, {"title": "方向二", "reason": "r2", "detail": "d2"})
+    svc.create_manual_direction(db_session, 1, {"title": "方向三", "reason": "r3", "detail": "d3"})
+    with pytest.raises(DirectionError, match="最多"):
+        svc.create_manual_direction(db_session, 1, {"title": "方向四", "reason": "r4", "detail": "d4"})
+
+
+def test_confirm_preserves_detail_and_source_type(db_session: Session):
+    items = _svc().confirm_directions(db_session, 1, [
+        DirectionCandidate(title="后端开发工程师", reason="熟悉 Python", detail="API/数据库", basis_keys=["skill:1"]),
+    ])
+    payload = json.loads(items[0].payload_json)
+    assert payload["detail"] == "API/数据库"
+    assert payload["source_type"] == "ai_recommendation"

@@ -9,6 +9,8 @@ from app.api.auth import require_auth
 from app.models.database import get_db
 from app.models.schemas import (
     DirectionConfirmRequest,
+    DirectionManualCreate,
+    DirectionUpdate,
     EvidenceCreate,
     ProfileEvidenceOut,
     ProfileFormOut,
@@ -17,6 +19,7 @@ from app.models.schemas import (
     ProfileItemOut,
     ProfileItemUpdate,
     ProfileResumeSource,
+    DirectionRecommendationResult,
     SoftInfoSaveRequest,
     SoftInfoSuggestion,
     StatusChange,
@@ -201,6 +204,55 @@ async def confirm_directions(
     except ProfileServiceError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return [_serialize_item(i) for i in items]
+
+
+@router.get("/directions")
+async def list_directions(user: dict = Depends(require_auth), db: Session = Depends(get_db)):
+    """列出用户已确认的投递方向。"""
+    return direction_service.list_directions(db, user["id"])
+
+
+@router.post("/directions/manual", status_code=201)
+async def create_manual_direction(
+    data: DirectionManualCreate,
+    user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """手动新增投递方向。"""
+    try:
+        item = direction_service.create_manual_direction(db, user["id"], data)
+    except (DirectionError, ProfileServiceError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return _serialize_item(item)
+
+
+@router.patch("/directions/{item_id}")
+async def update_direction(
+    item_id: int,
+    data: DirectionUpdate,
+    user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """编辑投递方向。"""
+    try:
+        item = direction_service.update_direction(db, user["id"], item_id, data)
+    except (DirectionError, ProfileServiceError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return _serialize_item(item)
+
+
+@router.delete("/directions/{item_id}", status_code=204)
+async def delete_direction(
+    item_id: int,
+    user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """删除投递方向。"""
+    try:
+        direction_service.delete_direction(db, user["id"], item_id)
+    except (DirectionError, ProfileServiceError) as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return None
 
 
 # === 软性信息（阶段3 指令3-2） ===
