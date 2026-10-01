@@ -203,7 +203,8 @@ async function analyze() {
   expanded.value = {}
   try {
     const res = await recommendDirections()
-    candidates.value = res.data || []
+    const data = res.data as any
+    candidates.value = Array.isArray(data) ? data : (data?.directions || [])
     if (!candidates.value.length) errMsg.value = '画像分析未生成有效方向，请完善画像后重试'
   } catch (e) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail

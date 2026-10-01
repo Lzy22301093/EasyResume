@@ -106,9 +106,22 @@
           <template v-else-if="wizard.step === 2">
             <div class="panel-head">
               <h2>教育经历</h2>
-              <el-button size="small" text type="primary" @click="addEducation">
-                <Plus :size="13" style="margin-right: 3px" />加一条
-              </el-button>
+              <div class="head-actions">
+                <el-dropdown @command="importProfileSection('education', $event)">
+                  <el-button size="small" type="primary" plain>
+                    <Sparkles :size="14" style="margin-right: 4px" />从画像导入<ArrowDown :size="13" />
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="fill">仅补充空字段</el-dropdown-item>
+                      <el-dropdown-item command="overwrite">覆盖本模块</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+                <el-button size="small" text type="primary" @click="addEducation">
+                  <Plus :size="13" style="margin-right: 3px" />加一条
+                </el-button>
+              </div>
             </div>
             <p class="hint">GPA、排名、主修课程均为可选；在读可把结束时间勾选为「至今」。</p>
             <div v-if="!wizard.educations.length" class="empty-block">还没有教育经历，点右上角添加。</div>
@@ -150,9 +163,22 @@
           <template v-else-if="wizard.step === 3">
             <div class="panel-head">
               <h2>专业技能</h2>
-              <el-button size="small" text type="primary" @click="addSkill">
-                <Plus :size="13" style="margin-right: 3px" />加技能
-              </el-button>
+              <div class="head-actions">
+                <el-dropdown @command="importProfileSection('skill', $event)">
+                  <el-button size="small" type="primary" plain>
+                    <Sparkles :size="14" style="margin-right: 4px" />从画像导入<ArrowDown :size="13" />
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="fill">仅补充空字段</el-dropdown-item>
+                      <el-dropdown-item command="overwrite">覆盖本模块</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+                <el-button size="small" text type="primary" @click="addSkill">
+                  <Plus :size="13" style="margin-right: 3px" />加技能
+                </el-button>
+              </div>
             </div>
             <p class="hint">按掌握程度填写更可信；熟练度可选。证书/荣誉可写在下方可选区。</p>
             <div v-if="!wizard.skills.length" class="empty-block">还没有技能标签。</div>
@@ -195,11 +221,24 @@
           <template v-else-if="wizard.step === 4">
             <div class="panel-head">
               <h2>实习经历</h2>
-              <el-button size="small" text type="primary" @click="addInternship">
-                <Plus :size="13" style="margin-right: 3px" />加实习
-              </el-button>
+              <div class="head-actions">
+                <el-dropdown @command="importProfileSection('internship', $event)">
+                  <el-button size="small" type="primary" plain>
+                    <Sparkles :size="14" style="margin-right: 4px" />从画像导入<ArrowDown :size="13" />
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="fill">仅补充空字段</el-dropdown-item>
+                      <el-dropdown-item command="overwrite">覆盖本模块</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+                <el-button size="small" text type="primary" @click="addInternship">
+                  <Plus :size="13" style="margin-right: 3px" />加实习
+                </el-button>
+              </div>
             </div>
-            <p class="hint">实习是简历大头之一：写清公司/岗位、时间段、具体工作与可量化成果。STAR 为可选增强。</p>
+            <p class="hint">填写公司、岗位、时间段、工作内容与可量化成果。STAR 结构化为可选增强。</p>
             <ExperienceAiRow
               :import-open="importOpen"
               :importing="importingExp"
@@ -261,11 +300,24 @@
           <template v-else-if="wizard.step === 5">
             <div class="panel-head">
               <h2>项目经历</h2>
-              <el-button size="small" text type="primary" @click="addProject">
-                <Plus :size="13" style="margin-right: 3px" />加项目
-              </el-button>
+              <div class="head-actions">
+                <el-dropdown @command="importProfileSection('project', $event)">
+                  <el-button size="small" type="primary" plain>
+                    <Sparkles :size="14" style="margin-right: 4px" />从画像导入<ArrowDown :size="13" />
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="fill">仅补充空字段</el-dropdown-item>
+                      <el-dropdown-item command="overwrite">覆盖本模块</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+                <el-button size="small" text type="primary" @click="addProject">
+                  <Plus :size="13" style="margin-right: 3px" />加项目
+                </el-button>
+              </div>
             </div>
-            <p class="hint">项目同样占简历大头：项目名、角色、技术栈、你负责的部分与成果。可选 STAR。</p>
+            <p class="hint">填写项目名、角色、技术栈、你负责的部分与成果。STAR 结构化为可选增强。</p>
             <ExperienceAiRow
               :import-open="importOpen"
               :importing="importingExp"
@@ -510,8 +562,8 @@ import {
   clearDraft, generateResume, getPhotoInfo, loadDraft, saveDraft, starStructuring, uploadPhotoFile,
   exportResume, downloadBlob, structureExperiences, generateExperiences, fetchPhotoBlob, type ExportFormat,
 } from '../api/resumeGeneration'
-import { recommendDirections, generateSoftInfo, saveSoftInfo, confirmDirections, listProfileItems } from '../api/profile'
-import type { DirectionCandidate, WizardEducation, WizardExpEntry, WizardExperience, WizardGeneratePayload, WizardSkill } from '../types'
+import { getResumeProfileSource, recommendDirections, generateSoftInfo, saveSoftInfo, confirmDirections, listProfileItems } from '../api/profile'
+import type { DirectionCandidate, ProfileResumeSource, ResumeEducationData, ResumeExperienceData, ResumeSkillData, WizardEducation, WizardExpEntry, WizardExperience, WizardGeneratePayload, WizardSkill } from '../types'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -519,14 +571,14 @@ const router = useRouter()
 type StepDef = { key: string; no: string; short: string; title: string; desc: string; icon: any }
 
 const STEPS: StepDef[] = [
-  { key: 'basic', no: '01', short: '基本信息', title: '认识自己', desc: '填写联系方式，并选择 1~3 个投递方向；可从个人画像一键导入。', icon: User },
-  { key: 'education', no: '02', short: '教育经历', title: '你的求学轨迹', desc: '学校、层次、专业与起止时间；GPA/排名/课程可选。', icon: GraduationCap },
-  { key: 'skills', no: '03', short: '专业技能', title: '你会什么', desc: '技能与熟练度；证书荣誉写在可选区。', icon: Wrench },
-  { key: 'internship', no: '04', short: '实习经历', title: '职场初体验', desc: '实习是简历大头：公司、岗位、工作内容与量化成果。', icon: Briefcase },
-  { key: 'project', no: '05', short: '项目经历', title: '讲好你的项目', desc: '项目名、角色、技术栈、你的贡献与成果。', icon: FolderKanban },
-  { key: 'soft', no: '06', short: '自我评价', title: '看见真实的自己', desc: '性格、愿景与自我评价，并入简历正文；不感兴趣方向仅存画像。', icon: Heart },
-  { key: 'photo', no: '07', short: '证件照', title: '留下你的样子', desc: '上传一张清晰的证件照，或使用占位图。', icon: ImageIcon },
-  { key: 'generate', no: '08', short: '生成与导出', title: '一份新的开始', desc: '预览微调后选择篇幅与模板，AI 整合润色并生成简历。', icon: FileText },
+  { key: 'basic', no: '01', short: '基本信息', title: '基本信息', desc: '填写联系方式，选择 1~3 个投递方向；也可从个人画像一键导入。', icon: User },
+  { key: 'education', no: '02', short: '教育经历', title: '教育经历', desc: '填写学校、学历、专业与起止时间；GPA、排名、课程可选。', icon: GraduationCap },
+  { key: 'skills', no: '03', short: '专业技能', title: '专业技能', desc: '列出技能与熟练度；证书与荣誉写在下方可选区。', icon: Wrench },
+  { key: 'internship', no: '04', short: '实习经历', title: '实习经历', desc: '写清公司、岗位、时间段、工作内容与可量化成果。', icon: Briefcase },
+  { key: 'project', no: '05', short: '项目经历', title: '项目经历', desc: '填写项目名、角色、技术栈，以及你的贡献与成果。', icon: FolderKanban },
+  { key: 'soft', no: '06', short: '自我评价', title: '自我评价', desc: '性格与职业愿景写入简历正文；不感兴趣方向仅保存到画像。', icon: Heart },
+  { key: 'photo', no: '07', short: '证件照', title: '证件照', desc: '上传一张清晰的证件照，也可以先使用占位图。', icon: ImageIcon },
+  { key: 'generate', no: '08', short: '生成与导出', title: '生成与导出', desc: '确认内容后选择篇幅与模板，AI 润色并生成简历，可导出 Word。', icon: FileText },
 ]
 
 const DEGREES = ['专科', '本科', '硕士', '博士', '其他']
@@ -592,7 +644,19 @@ const expAiError = ref('')
 const importOpen = ref(false)
 const importLoading = ref(false)
 const importingExp = ref(false)
-const profileExperiences = ref<{ id: number; title: string; content: string; checked: boolean }[]>([])
+type ProfileImportExperience = {
+  id: number
+  title: string
+  content: string
+  checked: boolean
+  entry?: WizardExpEntry
+}
+type ProfileImportSection = 'basic' | 'education' | 'skill' | 'internship' | 'project'
+type ProfileImportMode = 'fill' | 'overwrite'
+const profileExperiences = ref<ProfileImportExperience[]>([])
+const profileSource = ref<ProfileResumeSource | null>(null)
+const profileImportLoading = ref(false)
+const profileImportStatus = ref('')
 const expandedStar = reactive<Record<string, boolean>>({})
 
 const aiTargetLabel = computed(() => (aiTarget.value === 'internship' ? '实习' : '项目'))
@@ -627,6 +691,106 @@ function moveItem<T>(arr: T[], i: number, dir: number) {
   if (j < 0 || j >= arr.length) return
   const [x] = arr.splice(i, 1)
   arr.splice(j, 0, x)
+}
+
+async function ensureProfileSource(): Promise<ProfileResumeSource> {
+  if (profileSource.value) return profileSource.value
+  profileImportLoading.value = true
+  try {
+    const res = await getResumeProfileSource()
+    profileSource.value = res.data
+    return res.data
+  } finally {
+    profileImportLoading.value = false
+  }
+}
+
+function educationFromProfile(e: ResumeEducationData): WizardEducation {
+  return { ...emptyEducation(), ...e, current: !!e.current }
+}
+
+function skillFromProfile(s: ResumeSkillData): WizardSkill {
+  return { name: s.name || '', level: s.level || '' }
+}
+
+function expFromProfile(e: ResumeExperienceData): WizardExpEntry {
+  return { ...emptyExp(), ...e, current: !!e.current }
+}
+
+function fillMissing<T extends Record<string, any>>(target: T, source: T) {
+  for (const key of Object.keys(source) as (keyof T)[]) {
+    const value = source[key]
+    const empty = target[key] === undefined || target[key] === null || target[key] === '' || (Array.isArray(target[key]) && !target[key].length)
+    if (empty && value !== undefined && value !== null && value !== '') target[key] = value
+  }
+}
+
+function fillList<T extends Record<string, any>>(target: T[], source: T[], make: () => T) {
+  source.forEach((item, index) => {
+    if (target[index]) fillMissing(target[index], item)
+    else target.push({ ...make(), ...item })
+  })
+}
+
+function fillSkills(target: WizardSkill[], source: WizardSkill[]) {
+  for (const skill of source) {
+    const existing = target.find((item) => item.name === skill.name)
+    if (existing) fillMissing(existing as Record<string, any>, skill as Record<string, any>)
+    else target.push({ ...skill })
+  }
+}
+
+async function importProfileSection(section: ProfileImportSection, rawMode: string) {
+  const mode = (rawMode === 'overwrite' ? 'overwrite' : 'fill') as ProfileImportMode
+  try {
+    const source = await ensureProfileSource()
+    const labels: Record<ProfileImportSection, string> = {
+      basic: '基本信息', education: '教育经历', skill: '专业技能', internship: '实习经历', project: '项目经历',
+    }
+    const counts: Record<ProfileImportSection, number> = {
+      basic: Object.values(source.basic_info).filter(Boolean).length,
+      education: source.educations.length,
+      skill: source.skills.length,
+      internship: source.internships.length,
+      project: source.projects.length,
+    }
+    if (!counts[section]) {
+      ElMessage.warning(`个人画像中暂无可导入的${labels[section]}`)
+      return
+    }
+    const updated = source.profile_updated_at ? new Date(source.profile_updated_at).toLocaleString('zh-CN') : '未知时间'
+    await ElMessageBox.confirm(
+      `将导入 ${counts[section]} 条${labels[section]}。${mode === 'overwrite' ? '此操作会覆盖本模块现有内容。' : '仅补充空字段，不覆盖已填内容。'}\n画像更新时间：${updated}`,
+      `从画像导入${labels[section]}`,
+      { confirmButtonText: mode === 'overwrite' ? '确认覆盖' : '开始导入', cancelButtonText: '取消', type: mode === 'overwrite' ? 'warning' : 'info' },
+    )
+
+    if (section === 'basic') {
+      const keys = ['name', 'gender', 'phone', 'email', 'location', 'birthday'] as const
+      for (const key of keys) {
+        const value = source.basic_info[key] || ''
+        if (value && (mode === 'overwrite' || !basic[key])) basic[key] = value
+      }
+    } else if (section === 'education') {
+      const items = source.educations.map(educationFromProfile)
+      if (mode === 'overwrite') wizard.educations.splice(0, wizard.educations.length, ...items)
+      else fillList(wizard.educations as unknown as Record<string, any>[], items as unknown as Record<string, any>[], emptyEducation)
+    } else if (section === 'skill') {
+      const items = source.skills.map(skillFromProfile)
+      if (mode === 'overwrite') wizard.skills.splice(0, wizard.skills.length, ...items)
+      else fillSkills(wizard.skills, items)
+    } else {
+      const isInternship = section === 'internship'
+      const target = isInternship ? wizard.internships : wizard.projects
+      const items = (isInternship ? source.internships : source.projects).map(expFromProfile)
+      if (mode === 'overwrite') target.splice(0, target.length, ...items)
+      else fillList(target as unknown as Record<string, any>[], items as unknown as Record<string, any>[], emptyExp)
+    }
+    profileImportStatus.value = `已导入${labels[section]} · 来源画像 ${updated}`
+    ElMessage.success(profileImportStatus.value)
+  } catch (e: any) {
+    if (e !== 'cancel' && e !== 'close') ElMessage.error(e?.response?.data?.detail || '从画像导入失败')
+  }
 }
 
 function toggleStar(key: string) {
@@ -717,16 +881,15 @@ async function openImportFromProfile() {
   if (!importOpen.value) return
   importLoading.value = true
   try {
-    const res = await listProfileItems('experience')
-    const items = res.data || []
-    profileExperiences.value = (Array.isArray(items) ? items : [])
-      .map((it: any) => ({
-        id: it.id,
-        title: it.title || '',
-        content: it.content || '',
-        checked: false,
-      }))
-      .filter((it: any) => it.content || it.title)
+    const source = await ensureProfileSource()
+    const rows = aiTarget.value === 'internship' ? source.internships : source.projects
+    profileExperiences.value = rows.map((item, index) => ({
+      id: source.source_item_ids[index] || index + 1,
+      title: item.title || item.company || '未命名经历',
+      content: item.duty || item.achievement || item.tech_stack || '',
+      checked: false,
+      entry: expFromProfile(item),
+    }))
   } catch {
     profileExperiences.value = []
   } finally {
@@ -741,9 +904,9 @@ function applyProfileExperiences() {
     return
   }
   for (const pe of chosen) {
-    const entry = emptyExp()
-    entry.company = pe.title || ''
-    entry.duty = pe.content || ''
+    const entry = pe.entry ? { ...emptyExp(), ...pe.entry } : emptyExp()
+    if (!entry.company && !entry.title) entry.company = pe.title || ''
+    if (!entry.duty) entry.duty = pe.content || ''
     if (aiTarget.value === 'internship') wizard.internships.push(entry)
     else wizard.projects.push(entry)
   }
@@ -893,43 +1056,8 @@ function goKnowledge() {
 }
 
 async function importFromKnowledge() {
-  try {
-    const [basicRes, eduRes, skillRes] = await Promise.all([
-      listProfileItems('basic_info'),
-      listProfileItems('education'),
-      listProfileItems('skill'),
-    ])
-    const basicItems = (basicRes.data || []) as any[]
-    const map: Record<string, string> = {
-      姓名: 'name', 性别: 'gender', 手机号: 'phone', 邮箱: 'email',
-      所在地: 'location', 出生日期: 'birthday',
-    }
-    for (const it of basicItems) {
-      const key = map[it.title]
-      if (key && it.content) (basic as any)[key] = it.content
-    }
-    const eduItems = (eduRes.data || []) as any[]
-    if (eduItems.length && !wizard.educations.length) {
-      wizard.educations = eduItems.map((it) => {
-        const e = emptyEducation()
-        e.school = it.title || ''
-        const c = String(it.content || '')
-        const parts = c.split('·').map((x) => x.trim())
-        if (parts[0]) e.school = e.school || parts[0]
-        if (parts[1]) e.degree = parts[1]
-        if (parts[2]) e.major = parts[2]
-        return e
-      })
-    }
-    const skillItems = (skillRes.data || []) as any[]
-    if (skillItems.length && !wizard.skills.length) {
-      wizard.skills = skillItems.map((it) => ({ name: it.title || it.content || '', level: '' })).filter((s) => s.name)
-    }
-    ElMessage.success('已从画像导入可匹配的信息')
-    await loadProfileDirections()
-  } catch {
-    ElMessage.error('从画像导入失败')
-  }
+  await importProfileSection('basic', 'fill')
+  await loadProfileDirections()
 }
 
 // ---- 软性信息 ----
@@ -1336,6 +1464,7 @@ onMounted(async () => {
         if (wizard.step === 8) rebuildModules()
       } else {
         await clearDraft()
+        await importProfileSection('basic', 'fill')
       }
     }
   } catch { /* 静默 */ }
@@ -1347,12 +1476,18 @@ onMounted(async () => {
     }
   } catch { /* 静默 */ }
   await loadProfileDirections()
+  if (!profileSource.value) {
+    try {
+      await ensureProfileSource()
+    } catch { /* 静默 */ }
+  }
 })
 </script>
 
 <style scoped>
 .gen-page {
-  height: 100%;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;

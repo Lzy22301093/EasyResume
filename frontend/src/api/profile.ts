@@ -8,6 +8,10 @@ import type {
   ProfileItem,
   ProfileItemCreate,
   ProfileItemUpdate,
+  ProfileResumeSource,
+  ResumeDirectionData,
+  DirectionManualInput,
+  DirectionRecommendationResult,
   ProfileUpdateProposal,
   SoftInfo,
 } from '../types'
@@ -58,7 +62,23 @@ export function actOnProposal(proposalId: number, action: string, after_value?: 
 // 画像方向推荐（阶段3 指令3-1）
 export function recommendDirections() {
   // 生成候选会调用 LLM（较慢），放宽超时
-  return client.post<DirectionCandidate[]>('/profile/directions/recommend', null, { timeout: 180000 })
+  return client.post<DirectionRecommendationResult>('/profile/directions/recommend', null, { timeout: 180000 })
+}
+
+export function listDirections() {
+  return client.get<ResumeDirectionData[]>('/profile/directions')
+}
+
+export function createManualDirection(data: DirectionManualInput) {
+  return client.post<ProfileItem>('/profile/directions/manual', data)
+}
+
+export function updateDirection(id: number, data: Partial<DirectionManualInput>) {
+  return client.patch<ProfileItem>(`/profile/directions/${id}`, data)
+}
+
+export function deleteDirection(id: number) {
+  return client.delete(`/profile/directions/${id}`)
 }
 
 export function confirmDirections(selected: DirectionCandidate[]) {
@@ -76,6 +96,10 @@ export function saveSoftInfo(data: { personality: string; vision: string; disint
 }
 
 // 结构化画像表单（知识库 分阶段向导，阶段3）
+export function getResumeProfileSource() {
+  return client.get<ProfileResumeSource>('/profile/resume-source')
+}
+
 export function getProfileForm() {
   return client.get<ProfileFormData>('/profile/form')
 }

@@ -305,7 +305,84 @@ export interface ProfileFormData {
   extra: ProfileExtraEntry[]
 }
 
+export interface ResumeEducationData {
+  school: string
+  degree: string
+  major: string
+  start: string
+  end: string
+  current: boolean
+  gpa: string
+  rank: string
+  courses: string
+}
+
+export interface ResumeSkillData {
+  name: string
+  level: string
+  notes: string
+}
+
+export interface ResumeExperienceData {
+  exp_type: string
+  company: string
+  title: string
+  start: string
+  end: string
+  current: boolean
+  duration: string
+  tech_stack: string
+  duty: string
+  achievement: string
+  situation: string
+  task: string
+  action: string
+  result: string
+}
+
+export interface ResumeDirectionData {
+  id: number
+  title: string
+  reason: string
+  detail: string
+  source_type: 'ai_recommendation' | 'user_manual'
+}
+
+export interface ProfileResumeSource {
+  basic_info: Record<string, string>
+  educations: ResumeEducationData[]
+  skills: ResumeSkillData[]
+  internships: ResumeExperienceData[]
+  projects: ResumeExperienceData[]
+  directions: ResumeDirectionData[]
+  source_item_ids: number[]
+  profile_updated_at: string | null
+}
+
 export interface DirectionCandidate {
+  title: string
+  reason: string
+  detail: string
+  basis_keys?: string[]
+}
+
+export interface DirectionBasisItem {
+  key: string
+  item_id: number
+  category: string
+  title: string
+  summary: string
+}
+
+export interface DirectionRecommendationResult {
+  directions: DirectionCandidate[]
+  basis: DirectionBasisItem[]
+  data_source: string
+  decision_logic: string
+  profile_updated_at: string | null
+}
+
+export interface DirectionManualInput {
   title: string
   reason: string
   detail: string
