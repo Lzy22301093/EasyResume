@@ -563,7 +563,7 @@ import {
   exportResume, downloadBlob, structureExperiences, generateExperiences, fetchPhotoBlob, type ExportFormat,
 } from '../api/resumeGeneration'
 import { getResumeProfileSource, recommendDirections, generateSoftInfo, saveSoftInfo, confirmDirections, listProfileItems } from '../api/profile'
-import type { DirectionCandidate, ProfileResumeSource, ResumeEducationData, ResumeExperienceData, ResumeSkillData, WizardEducation, WizardExpEntry, WizardExperience, WizardGeneratePayload, WizardSkill } from '../types'
+import type { DirectionCandidate, DirectionRecommendationResult, ProfileResumeSource, ResumeEducationData, ResumeExperienceData, ResumeSkillData, WizardEducation, WizardExpEntry, WizardExperience, WizardGeneratePayload, WizardSkill } from '../types'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -1007,7 +1007,8 @@ async function analyzeDirections() {
   directionError.value = ''
   try {
     const res = await recommendDirections()
-    directions.value = Array.isArray(res.data) ? res.data : []
+    const data = res.data as DirectionRecommendationResult | DirectionCandidate[]
+    directions.value = Array.isArray(data) ? data : (data.directions || [])
     if (!directions.value.length) directionError.value = '画像信息不足，暂时无法分析方向。'
   } catch {
     directionError.value = '分析失败，请确认后端已启动，或先完善个人画像。'
