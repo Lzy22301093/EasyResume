@@ -27,6 +27,7 @@ from app.models.schemas import (
     ProfileItemCreate,
     ProfileSocialEntry,
 )
+from app.services.profile_payload import dump_profile_payload, load_profile_payload, parse_legacy_profile_payload
 from app.services.profile_service import ProfileService, ProfileServiceError
 
 # 基本信息字段：form 键 → 写入 profile_items 的 title。
@@ -76,7 +77,7 @@ class ProfileFormService:
                 basic_info[form_key] = item.content
 
         education_items = self._profile.list_by_category(db, user_id, "education")
-        education = [self._parse_education(i.title, i.content or "") for i in education_items]
+        education = [self._education_from_item(i) for i in education_items]
 
         award_items = self._profile.list_by_category(db, user_id, "award")
         awards: list[str] = []
@@ -124,6 +125,7 @@ class ProfileFormService:
                     category="basic_info",
                     title=title,
                     content=text or "",
+                    payload_json={form_key: text} if text else {},
                     item_type="fact",
                     status="confirmed",
                     visibility="resume_interview",
@@ -184,6 +186,11 @@ class ProfileFormService:
                     category=cat,
                     title=title,
                     content=(ext.content or "").strip() or "",
+                    payload_json=(
+                        parse_legacy_profile_payload(cat, title, (ext.content or "").strip())
+                        if cat in {"skill", "experience"}
+                        else None
+                    ),
                     item_type="fact",
                     status="confirmed",
                     visibility="resume_interview",
@@ -205,6 +212,7 @@ class ProfileFormService:
                 category="education",
                 title=title,
                 content=content,
+                payload_json=edu.model_dump(),
                 item_type="fact",
                 status="confirmed",
                 visibility="resume_interview",
@@ -232,6 +240,27 @@ class ProfileFormService:
             if value:
                 parts.append(f"{label}：{value}")
         return "\n".join(parts)
+
+    @staticmethod
+    def _text_field(content: str | None, label: str) -> str:
+        for line in (content or "").splitlines():
+            key, sep, value = line.partition("：")
+            if sep and key.strip() == label:
+                return value.strip()
+        return ""
+
+    @staticmethod
+    def _education_from_item(item) -> ProfileEducationEntry:
+        payload = load_profile_payload(item)
+        return ProfileEducationEntry(
+            school=str(payload.get("school") or (item.title if item.title != "教育经历" else "")),
+            degree=str(payload.get("degree") or ""),
+            major=str(payload.get("major") or ""),
+            courses=str(payload.get("courses") or self._text_field(item.content, "主修课程")),
+            start=str(payload.get("start") or ""),
+            end=str(payload.get("end") or ""),
+            gpa=str(payload.get("gpa") or ""),
+        )
 
     @staticmethod
     def _parse_education(title: str, content: str) -> ProfileEducationEntry:

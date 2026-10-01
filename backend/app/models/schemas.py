@@ -679,6 +679,70 @@ class JobApplicationOut(BaseModel):
 
 # === 画像方向推荐（阶段3 指令3-1） ===
 
+class ResumeEducationData(BaseModel):
+    """简历生成使用的结构化教育经历。"""
+
+    school: str = ""
+    degree: str = ""
+    major: str = ""
+    start: str = ""
+    end: str = ""
+    current: bool = False
+    gpa: str = ""
+    rank: str = ""
+    courses: str = ""
+
+
+class ResumeSkillData(BaseModel):
+    """简历生成使用的结构化技能。"""
+
+    name: str = ""
+    level: str = ""
+    notes: str = ""
+
+
+class ResumeExperienceData(BaseModel):
+    """简历生成使用的结构化实习/项目经历。"""
+
+    exp_type: str = "experience"
+    company: str = ""
+    title: str = ""
+    start: str = ""
+    end: str = ""
+    current: bool = False
+    duration: str = ""
+    tech_stack: str = ""
+    duty: str = ""
+    achievement: str = ""
+    situation: str = ""
+    task: str = ""
+    action: str = ""
+    result: str = ""
+
+
+class ResumeDirectionData(BaseModel):
+    """简历生成使用的投递方向。"""
+
+    id: int
+    title: str
+    reason: str = ""
+    detail: str = ""
+    source_type: str = "user_manual"
+
+
+class ProfileResumeSource(BaseModel):
+    """个人画像映射后的统一简历数据源。"""
+
+    basic_info: dict[str, str] = Field(default_factory=dict)
+    educations: list[ResumeEducationData] = Field(default_factory=list)
+    skills: list[ResumeSkillData] = Field(default_factory=list)
+    internships: list[ResumeExperienceData] = Field(default_factory=list)
+    projects: list[ResumeExperienceData] = Field(default_factory=list)
+    directions: list[ResumeDirectionData] = Field(default_factory=list)
+    source_item_ids: list[int] = Field(default_factory=list)
+    profile_updated_at: datetime | None = None
+
+
 class DirectionCandidate(BaseModel):
     """单个岗位方向候选（LLM 结构化输出 + API 请求/响应复用）。"""
     title: str = Field(..., description="岗位方向名称，如：后端开发工程师")

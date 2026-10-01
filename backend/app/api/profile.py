@@ -16,6 +16,7 @@ from app.models.schemas import (
     ProfileItemCreate,
     ProfileItemOut,
     ProfileItemUpdate,
+    ProfileResumeSource,
     SoftInfoSaveRequest,
     SoftInfoSuggestion,
     StatusChange,
@@ -23,6 +24,7 @@ from app.models.schemas import (
 from app.services.direction_service import DirectionError, DirectionService
 from app.services.profile_form_service import ProfileFormService
 from app.services.profile_payload import load_profile_payload
+from app.services.profile_resume_source_service import ProfileResumeSourceService
 from app.services.profile_service import ProfileService, ProfileServiceError
 from app.services.soft_info_service import SoftInfoError, SoftInfoService
 
@@ -31,6 +33,7 @@ service = ProfileService()
 direction_service = DirectionService()
 soft_info_service = SoftInfoService()
 form_service = ProfileFormService()
+resume_source_service = ProfileResumeSourceService()
 
 
 def _serialize_item(item) -> dict:
@@ -65,6 +68,12 @@ def _serialize_item(item) -> dict:
 async def get_categories(user: dict = Depends(require_auth), db: Session = Depends(get_db)):
     """按分类聚合条目数量（节点星座图/导航）。"""
     return service.category_summary(db, user["id"])
+
+
+@router.get("/resume-source", response_model=ProfileResumeSource)
+async def get_resume_source(user: dict = Depends(require_auth), db: Session = Depends(get_db)):
+    """返回个人画像映射后的简历生成统一数据源。"""
+    return resume_source_service.load(db, user["id"])
 
 
 @router.get("/items", response_model=list[ProfileItemOut])
