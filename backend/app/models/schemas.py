@@ -206,6 +206,7 @@ class ProfileItemCreate(BaseModel):
     category: str = Field(..., description="分类")
     title: str = Field(..., description="标题")
     content: str | None = None
+    payload_json: dict[str, Any] | None = None
     item_type: str = Field(default="fact", description="fact | suggestion | feedback")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     visibility: str = Field(default="resume_interview", description="resume | interview | resume_interview | private")
@@ -217,6 +218,7 @@ class ProfileItemUpdate(BaseModel):
     category: str | None = None
     title: str | None = None
     content: str | None = None
+    payload_json: dict[str, Any] | None = None
     item_type: str | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     visibility: str | None = None
@@ -230,6 +232,7 @@ class ProfileItemOut(BaseModel):
     category: str
     title: str
     content: str | None = None
+    payload_json: dict[str, Any] | None = None
     item_type: str
     confidence: float
     visibility: str

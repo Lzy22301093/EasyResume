@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.models.orm import ProfileEvidence, ProfileItem
 from app.models.schemas import EvidenceCreate, ProfileItemCreate, ProfileItemUpdate
+from app.services.profile_payload import dump_profile_payload
 
 ALLOWED_CATEGORIES = {
     "basic_info", "education", "experience", "skill", "target", "soft",
@@ -122,6 +123,7 @@ class ProfileService:
             category=data.category,
             title=data.title,
             content=data.content,
+            payload_json=dump_profile_payload(data.payload_json) if data.payload_json is not None else None,
             item_type=data.item_type,
             confidence=data.confidence,
             visibility=data.visibility,
@@ -135,6 +137,8 @@ class ProfileService:
     def update_item(self, db: DBSession, user_id: int, item_id: int, data: ProfileItemUpdate) -> ProfileItem:
         item = self.get_item(db, user_id, item_id)
         updates = data.model_dump(exclude_unset=True, exclude_none=True)
+        if "payload_json" in updates:
+            updates["payload_json"] = dump_profile_payload(updates["payload_json"])
         for field, value in updates.items():
             if field in ("category", "status", "visibility", "item_type"):
                 allowed = {
@@ -184,6 +188,7 @@ class ProfileService:
         )
         if existing is not None:
             existing.content = data.content
+            existing.payload_json = dump_profile_payload(data.payload_json) if data.payload_json is not None else None
             existing.item_type = data.item_type
             existing.status = data.status
             existing.visibility = data.visibility

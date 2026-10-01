@@ -295,6 +295,7 @@ class ProfileItem(Base):
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     item_type: Mapped[str] = mapped_column(String(32), default="fact", nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     visibility: Mapped[str] = mapped_column(String(20), default="resume_interview", nullable=False)

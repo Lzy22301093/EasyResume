@@ -22,6 +22,7 @@ from app.models.schemas import (
 )
 from app.services.direction_service import DirectionError, DirectionService
 from app.services.profile_form_service import ProfileFormService
+from app.services.profile_payload import load_profile_payload
 from app.services.profile_service import ProfileService, ProfileServiceError
 from app.services.soft_info_service import SoftInfoError, SoftInfoService
 
@@ -38,6 +39,7 @@ def _serialize_item(item) -> dict:
         "category": item.category,
         "title": item.title,
         "content": item.content,
+        "payload_json": load_profile_payload(item),
         "item_type": item.item_type,
         "confidence": item.confidence,
         "visibility": item.visibility,
