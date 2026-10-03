@@ -51,9 +51,9 @@ TEMPLATES: dict[str, TemplateSpec] = {
             "证书/荣誉",
         ),
         max_summary_chars=100,
-        max_bullets_per_exp=3,
-        max_bullet_chars=44,
-        max_experiences=3,
+        max_bullets_per_exp=0,
+        max_bullet_chars=0,
+        max_experiences=0,
         hide_awards_on_one_page=True,
         summary_title="个人优势",
     ),
@@ -72,9 +72,9 @@ TEMPLATES: dict[str, TemplateSpec] = {
             "证书/荣誉",
         ),
         max_summary_chars=120,
-        max_bullets_per_exp=4,
-        max_bullet_chars=56,
-        max_experiences=4,
+        max_bullets_per_exp=0,
+        max_bullet_chars=0,
+        max_experiences=0,
         hide_awards_on_one_page=False,
         summary_title="个人优势",
     ),
@@ -93,9 +93,9 @@ TEMPLATES: dict[str, TemplateSpec] = {
             "证书/荣誉",
         ),
         max_summary_chars=150,
-        max_bullets_per_exp=3,
-        max_bullet_chars=52,
-        max_experiences=4,
+        max_bullets_per_exp=0,
+        max_bullet_chars=0,
+        max_experiences=0,
         hide_awards_on_one_page=False,
         summary_title="自我评价",
     ),
@@ -152,31 +152,15 @@ def bullets_from_experience(
     max_bullets: int,
     max_chars: int,
 ) -> list[str]:
-    """把经历字段压成 2~4 条「· 」bullet。"""
+    """把经历字段完整转成「· 」bullet；经历内容不做字数/条数删减。"""
     candidates: list[str] = []
-    for raw in (action, duty, task, situation):
+    for raw in (action, duty, task, situation, result, achievement):
         t = (raw or "").strip()
         if t and t not in candidates:
             candidates.append(t)
-    outcome = (result or achievement or "").strip()
-    bullets: list[str] = []
-    seen: set[str] = set()
-    for c in candidates:
-        for sent in split_sentences(c) or [c]:
-            sent = clamp_text(sent, max_chars)
-            if not sent or sent in seen:
-                continue
-            seen.add(sent)
-            bullets.append(sent)
-            if len(bullets) >= max_bullets - (1 if outcome else 0):
-                break
-        if len(bullets) >= max_bullets - (1 if outcome else 0):
-            break
-    if outcome:
-        out = clamp_text(outcome, max_chars)
-        if out and out not in seen:
-            bullets.append(out)
-    return bullets[:max_bullets]
+    if max_bullets > 0:
+        return candidates[:max_bullets]
+    return candidates
 
 
 def format_period(start: str | None, end: str | None, current: bool = False) -> str:
@@ -418,13 +402,13 @@ def assemble_with_template(
     if not work_list and not project_list and experiences:
         work_list, project_list = _split_experiences(experiences)
 
-    max_exp = spec.max_experiences if one_page else spec.max_experiences + 1
+    max_exp = spec.max_experiences if one_page else (spec.max_experiences + 1 if spec.max_experiences > 0 else 0)
     work_blocks: list[str] = []
     project_blocks: list[str] = []
     count = 0
     for bucket, is_work in ((work_list, True), (project_list, False)):
         for exp in bucket:
-            if count >= max_exp:
+            if max_exp > 0 and count >= max_exp:
                 break
             header = _exp_header(exp)
             bullets = bullets_from_experience(
@@ -447,7 +431,7 @@ def assemble_with_template(
             else:
                 project_blocks.append(block)
             count += 1
-        if count >= max_exp:
+        if max_exp > 0 and count >= max_exp:
             break
     if work_blocks:
         sections.append({"title": "实习/工作经历", "content": "\n\n".join(work_blocks)})

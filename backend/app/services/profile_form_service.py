@@ -45,6 +45,7 @@ BASIC_INFO_FIELDS: dict[str, str] = {
 
 # 其他分类兜底（不在分阶段表单里，但知识库仍要能补充）
 EXTRA_CATEGORIES = {"experience", "skill", "target", "soft", "interview_feedback"}
+FORM_EXTRA_CATEGORIES = {"internship", "project", "skill", "target", "soft", "interview_feedback"}
 
 # 教育经历内容的书写格式（用于把结构化条目拼成 content，便于检索与复用）
 _EDU_LABELS = (
@@ -73,8 +74,11 @@ class ProfileFormService:
         by_title = {i.title: i for i in self._profile.list_by_category(db, user_id, "basic_info")}
         for form_key, title in BASIC_INFO_FIELDS.items():
             item = by_title.get(title)
-            if item and item.content:
-                basic_info[form_key] = item.content
+            if not item:
+                continue
+            value = item.content or str(load_profile_payload(item).get(form_key) or "")
+            if value:
+                basic_info[form_key] = value
 
         education_items = self._profile.list_by_category(db, user_id, "education")
         education = [self._education_from_item(i) for i in education_items]
@@ -96,11 +100,7 @@ class ProfileFormService:
                 social.append(ProfileSocialEntry(platform="", account=s.title))
 
         extra_items = self._profile.list_items(db, user_id)
-        extra = [
-            ProfileExtraEntry(category=i.category, title=i.title, content=i.content or "")
-            for i in extra_items
-            if i.category in EXTRA_CATEGORIES
-        ]
+        extra = [self._extra_from_item(i) for i in extra_items if i.category in EXTRA_CATEGORIES]
 
         return ProfileFormOut(
             basic_info=basic_info,
@@ -173,24 +173,45 @@ class ProfileFormService:
 
         # 5) 其他分类兜底
         for ext in data.extra or []:
-            cat = (ext.category or "").strip()
-            if cat not in EXTRA_CATEGORIES:
-                raise ProfileServiceError(f"其他分类非法: {cat!r}，允许 {sorted(EXTRA_CATEGORIES)}")
+            raw_cat = (ext.category or "").strip()
             title = (ext.title or "").strip()
             if not title:
                 continue
+            if raw_cat in {"internship", "project"} or raw_cat == "experience":
+                cat = "experience"
+                exp_type = (ext.exp_type or raw_cat).strip()
+                if exp_type not in {"internship", "project"}:
+                    exp_type = "project"
+                content = self._format_experience(ext)
+                payload: dict[str, Any] = {
+                    "exp_type": exp_type,
+                    "title": title,
+                    "role": ext.role.strip(),
+                    "start": ext.start.strip(),
+                    "end": ext.end.strip(),
+                    "current": bool(ext.current),
+                    "tech_stack": ext.tech_stack.strip(),
+                    "duty": ext.duty.strip(),
+                    "achievement": ext.achievement.strip(),
+                }
+            else:
+                if raw_cat not in EXTRA_CATEGORIES:
+                    raise ProfileServiceError(f"其他分类非法: {raw_cat!r}，允许 {sorted(FORM_EXTRA_CATEGORIES)}")
+                cat = raw_cat
+                content = (ext.content or "").strip()
+                payload = (
+                    parse_legacy_profile_payload(cat, title, content)
+                    if cat == "skill"
+                    else None
+                )
             self._profile.upsert_item(
                 db,
                 user_id,
                 ProfileItemCreate(
                     category=cat,
                     title=title,
-                    content=(ext.content or "").strip() or "",
-                    payload_json=(
-                        parse_legacy_profile_payload(cat, title, (ext.content or "").strip())
-                        if cat in {"skill", "experience"}
-                        else None
-                    ),
+                    content=content,
+                    payload_json=payload,
                     item_type="fact",
                     status="confirmed",
                     visibility="resume_interview",
@@ -200,6 +221,61 @@ class ProfileFormService:
         return self.load(db, user_id)
 
     # ---- 内部 ----
+
+    @staticmethod
+    def _format_experience(ext: ProfileExtraEntry) -> str:
+        labels = (
+            ("role", "角色"),
+            ("start", "开始时间"),
+            ("end", "结束时间"),
+            ("tech_stack", "技术栈"),
+            ("duties", "职责"),
+            ("achievement", "成果"),
+        )
+        values = {
+            "role": ext.role,
+            "start": ext.start,
+            "end": "至今" if ext.current else ext.end,
+            "tech_stack": ext.tech_stack,
+            "duties": ext.duty,
+            "achievement": ext.achievement,
+        }
+        return "\n".join(f"{label}：{values[key].strip()}" for key, label in labels if values[key].strip())
+
+    @staticmethod
+    def _experience_type(item, payload: dict[str, Any]) -> str:
+        explicit = str(payload.get("exp_type") or "").strip()
+        if explicit in {"internship", "project"}:
+            return explicit
+        text = f"{item.title} {item.content or ''}".lower()
+        project_keywords = ("项目", "平台", "系统", "网站", "应用", "工具", "论文", "设计", "实现", "开发")
+        internship_keywords = ("实习", "工作", "公司", "岗位", "职场")
+        if any(k in text for k in internship_keywords):
+            return "internship"
+        if any(k in text for k in project_keywords):
+            return "project"
+        return "internship"
+
+    @classmethod
+    def _extra_from_item(cls, item) -> ProfileExtraEntry:
+        payload = load_profile_payload(item)
+        if item.category == "experience":
+            exp_type = cls._experience_type(item, payload)
+            legacy_company = str(payload.get("company") or "")
+            return ProfileExtraEntry(
+                category=exp_type,
+                exp_type=exp_type,
+                title=str(legacy_company or payload.get("title") or item.title or ""),
+                content=str(payload.get("duty") or item.content or ""),
+                role=str(payload.get("role") or (payload.get("title") if legacy_company else "")),
+                start=str(payload.get("start") or ""),
+                end=str(payload.get("end") or ""),
+                current=bool(payload.get("current", False)),
+                tech_stack=str(payload.get("tech_stack") or ""),
+                duty=str(payload.get("duty") or item.content or ""),
+                achievement=str(payload.get("achievement") or ""),
+            )
+        return ProfileExtraEntry(category=item.category, title=item.title, content=item.content or "")
 
     def _upsert_education(self, db: DBSession, user_id: int, edu: ProfileEducationEntry) -> ProfileItem:
         school = (edu.school or "").strip()
@@ -256,7 +332,7 @@ class ProfileFormService:
             school=str(payload.get("school") or (item.title if item.title != "教育经历" else "")),
             degree=str(payload.get("degree") or ""),
             major=str(payload.get("major") or ""),
-            courses=str(payload.get("courses") or self._text_field(item.content, "主修课程")),
+            courses=str(payload.get("courses") or ProfileFormService._text_field(item.content, "主修课程")),
             start=str(payload.get("start") or ""),
             end=str(payload.get("end") or ""),
             gpa=str(payload.get("gpa") or ""),

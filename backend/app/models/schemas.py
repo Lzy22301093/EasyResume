@@ -276,10 +276,18 @@ class ProfileSocialEntry(BaseModel):
 
 
 class ProfileExtraEntry(BaseModel):
-    """其他分类的纯文本条目（experience/skill/target/soft/interview_feedback 兜底）。"""
-    category: str = Field(..., description="experience | skill | target | soft | interview_feedback")
+    """画像补充条目；实习/项目使用独立结构，其他分类保留文本兜底。"""
+    category: str = Field(..., description="internship | project | skill | target | soft | interview_feedback")
     title: str = ""
     content: str = ""
+    exp_type: str = ""
+    role: str = ""
+    start: str = ""
+    end: str = ""
+    current: bool = False
+    tech_stack: str = ""
+    duty: str = ""
+    achievement: str = ""
 
 
 class ProfileFormSave(BaseModel):
@@ -734,6 +742,7 @@ class ProfileResumeSource(BaseModel):
     """个人画像映射后的统一简历数据源。"""
 
     basic_info: dict[str, str] = Field(default_factory=dict)
+    soft_info: dict[str, str] = Field(default_factory=dict)
     educations: list[ResumeEducationData] = Field(default_factory=list)
     skills: list[ResumeSkillData] = Field(default_factory=list)
     internships: list[ResumeExperienceData] = Field(default_factory=list)

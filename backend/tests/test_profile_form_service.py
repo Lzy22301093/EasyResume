@@ -1,5 +1,7 @@
 """Tests for ProfileFormService (知识库 分阶段向导，阶段3)."""
 
+import json
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -129,3 +131,48 @@ def test_empty_payload_returns_empty(db_session: Session):
     assert out.basic_info == {}
     assert out.education == []
     assert out.social == []
+
+
+def test_structured_internship_and_project_round_trip(db_session: Session):
+    svc = ProfileFormService()
+    svc.save(
+        db_session,
+        1,
+        ProfileFormSave(
+            extra=[
+                ProfileExtraEntry(
+                    category="internship",
+                    title="某科技公司",
+                    role="后端实习生",
+                    start="2024-01",
+                    end="2024-03",
+                    current=False,
+                    duty="负责接口开发与性能优化",
+                    achievement="接口响应时间降低 40%",
+                ),
+                ProfileExtraEntry(
+                    category="project",
+                    title="简历平台",
+                    role="后端负责人",
+                    start="2024-04",
+                    end="2024-06",
+                    current=True,
+                    tech_stack="Python/FastAPI",
+                    duty="设计并实现简历生成服务",
+                    achievement="完成 8 个核心页面与导出能力",
+                ),
+            ]
+        ),
+    )
+    out = svc.load(db_session, 1)
+    assert [e.category for e in out.extra] == ["internship", "project"]
+    internship = out.extra[0]
+    project = out.extra[1]
+    assert internship.role == "后端实习生"
+    assert internship.duty == "负责接口开发与性能优化"
+    assert project.role == "后端负责人"
+    assert project.tech_stack == "Python/FastAPI"
+
+    items = {i.title: i for i in ProfileService().list_items(db_session, 1, category="experience")}
+    assert json.loads(items["某科技公司"].payload_json)["exp_type"] == "internship"
+    assert json.loads(items["简历平台"].payload_json)["exp_type"] == "project"

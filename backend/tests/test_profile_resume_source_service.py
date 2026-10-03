@@ -105,3 +105,24 @@ def test_legacy_items_are_mapped(db_session: Session):
     assert out.skills[0].notes == "熟练使用 FastAPI"
     assert out.projects[0].company == "某项目"
     assert out.projects[0].duty == "负责整体设计与交付"
+
+
+def test_soft_info_is_exposed_for_self_eval_import(db_session: Session):
+    _item(db_session, "soft", "性格特点", "沉稳、有责任心")
+    _item(db_session, "soft", "职业愿景", "成长为独立负责模块的工程师")
+    _item(db_session, "soft", "不感兴趣的方向", "纯销售岗位")
+    _item(db_session, "soft", "自我评价", "重视工程质量和长期价值")
+    out = ProfileResumeSourceService().load(db_session, 1)
+    assert out.soft_info == {
+        "personality": "沉稳、有责任心",
+        "vision": "成长为独立负责模块的工程师",
+        "disinterested": "纯销售岗位",
+        "self_eval": "重视工程质量和长期价值",
+    }
+
+
+def test_legacy_project_is_not_misclassified_as_internship(db_session: Session):
+    _item(db_session, "experience", "智能简历平台", "使用 Vue 与 FastAPI 设计实现完整系统")
+    out = ProfileResumeSourceService().load(db_session, 1)
+    assert out.projects[0].title == "智能简历平台"
+    assert out.internships == []

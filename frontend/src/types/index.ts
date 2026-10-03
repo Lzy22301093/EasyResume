@@ -287,6 +287,14 @@ export interface ProfileExtraEntry {
   category: string
   title: string
   content: string
+  exp_type?: string
+  role?: string
+  start?: string
+  end?: string
+  current?: boolean
+  tech_stack?: string
+  duty?: string
+  achievement?: string
 }
 
 export interface ProfileFormSave {
@@ -350,6 +358,7 @@ export interface ResumeDirectionData {
 
 export interface ProfileResumeSource {
   basic_info: Record<string, string>
+  soft_info: Record<string, string>
   educations: ResumeEducationData[]
   skills: ResumeSkillData[]
   internships: ResumeExperienceData[]

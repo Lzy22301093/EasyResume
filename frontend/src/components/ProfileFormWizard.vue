@@ -8,7 +8,7 @@
     class="profile-wizard-dialog"
     @closed="reset"
   >
-    <!-- 顶部步骤条（FResume 风格）：基本信息 / 教育经历 / 个人奖项 / 社交账号 / 个人头像 -->
+    <!-- 顶部步骤条：基本信息 / 教育经历 / 个人奖项 / 社交账号 / 个人头像 -->
     <div class="wiz-steps">
       <button
         v-for="(s, i) in STEPS"
@@ -35,7 +35,15 @@
         <div class="wiz-grid">
           <div class="wiz-field" v-for="f in BASIC_FIELDS" :key="f.key">
             <label :class="{ req: f.required }">{{ f.label }}<span v-if="f.required" class="req-mark">*</span></label>
-            <el-input v-model="form.basic_info[f.key]" :placeholder="f.placeholder" clearable />
+            <el-date-picker
+              v-if="f.key === 'birthday'"
+              v-model="form.basic_info[f.key]"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="选择出生日期"
+              style="width: 100%"
+            />
+            <el-input v-else v-model="form.basic_info[f.key]" :placeholder="f.placeholder" clearable />
           </div>
         </div>
       </template>
@@ -147,12 +155,12 @@
         </div>
       </template>
 
-      <!-- 06 其他分类（项目/技能/目标/自我评价/面试反馈） -->
+      <!-- 06 实习 / 项目 / 其他画像 -->
       <template v-else-if="step === 6">
-        <p class="wiz-sub">补充不在上面五类里的条项（项目经历 / 专业技能 / 目标岗位 / 自我评价 / 面试反馈）。</p>
+        <p class="wiz-sub">实习经历与项目经历使用独立结构保存，避免项目被误分类为实习；技能、目标、软性信息等可继续在下方补充。</p>
         <div v-for="(ext, i) in form.extra" :key="i" class="wiz-card">
           <div class="wiz-card-head">
-            <span class="idx">OTH · {{ String(i + 1).padStart(2, '0') }}</span>
+            <span class="idx">{{ ext.category === 'internship' ? 'INT' : ext.category === 'project' ? 'PRJ' : 'OTH' }} · {{ String(i + 1).padStart(2, '0') }}</span>
             <el-button text type="danger" size="small" @click="form.extra.splice(i, 1)">
               <Trash2 :size="14" /> 删除
             </el-button>
@@ -160,23 +168,65 @@
           <div class="wiz-grid two">
             <div class="wiz-field">
               <label class="req">分类<span class="req-mark">*</span></label>
-              <el-select v-model="ext.category" placeholder="选择分类" style="width: 100%">
+              <el-select v-model="ext.category" placeholder="选择分类" style="width: 100%" @change="onExtraCategoryChange(ext)">
                 <el-option v-for="c in EXTRA_OPTIONS" :key="c.value" :label="c.label" :value="c.value" />
               </el-select>
             </div>
             <div class="wiz-field">
-              <label class="req">标题<span class="req-mark">*</span></label>
-              <el-input v-model="ext.title" placeholder="如：arXiv 论文问答系统" />
+              <label class="req">{{ ext.category === 'internship' ? '公司名称' : ext.category === 'project' ? '项目名称' : '标题' }}<span class="req-mark">*</span></label>
+              <el-input v-model="ext.title" :placeholder="ext.category === 'internship' ? '如：某科技公司' : ext.category === 'project' ? '如：智能简历平台' : '条目标题'" />
             </div>
           </div>
-          <div class="wiz-field">
-            <label>内容</label>
-            <el-input v-model="ext.content" type="textarea" :rows="3" placeholder="具体事实 / 经历描述" />
-          </div>
+
+          <template v-if="isExperienceExtra(ext)">
+            <div class="wiz-grid two">
+              <div class="wiz-field">
+                <label>{{ ext.category === 'internship' ? '实习岗位' : '项目角色' }}</label>
+                <el-input v-model="ext.role" :placeholder="ext.category === 'internship' ? '如：后端实习生' : '如：后端负责人'" />
+              </div>
+              <div v-if="ext.category === 'project'" class="wiz-field">
+                <label>技术栈</label>
+                <el-input v-model="ext.tech_stack" placeholder="如：Vue3、FastAPI、MySQL" />
+              </div>
+              <div class="wiz-field">
+                <label>开始时间</label>
+                <el-date-picker v-model="ext.start" type="month" value-format="YYYY-MM" placeholder="选择开始月份" style="width: 100%" />
+              </div>
+              <div class="wiz-field">
+                <label>结束时间</label>
+                <div class="period-end">
+                  <el-checkbox v-model="ext.current">至今</el-checkbox>
+                  <el-date-picker v-model="ext.end" type="month" value-format="YYYY-MM" placeholder="选择结束月份" :disabled="ext.current" style="flex: 1" />
+                </div>
+              </div>
+            </div>
+            <div class="wiz-field">
+              <label>{{ ext.category === 'internship' ? '实习职责' : '项目职责' }}</label>
+              <el-input v-model="ext.duty" type="textarea" :rows="4" :placeholder="ext.category === 'internship' ? '完整描述工作内容、使用的方法与承担的责任' : '完整描述项目背景、负责模块、技术方案与关键实现'" />
+            </div>
+            <div class="wiz-field">
+              <label>{{ ext.category === 'internship' ? '实习成果' : '项目成果' }}</label>
+              <el-input v-model="ext.achievement" type="textarea" :rows="3" placeholder="尽量量化：完成了什么、提升了什么、结果如何" />
+            </div>
+          </template>
+          <template v-else>
+            <div class="wiz-field">
+              <label>内容</label>
+              <el-input v-model="ext.content" type="textarea" :rows="3" placeholder="具体事实 / 经历描述" />
+            </div>
+          </template>
         </div>
-        <button class="wiz-add" @click="addExtra">
-          <Plus :size="14" style="margin-right: 4px" /> 新增条目
-        </button>
+        <div class="wiz-add-row">
+          <button class="wiz-add" @click="addExperience('internship')">
+            <Plus :size="14" style="margin-right: 4px" /> 新增实习经历
+          </button>
+          <button class="wiz-add" @click="addExperience('project')">
+            <Plus :size="14" style="margin-right: 4px" /> 新增项目经历
+          </button>
+          <button class="wiz-add" @click="addExtra">
+            <Plus :size="14" style="margin-right: 4px" /> 新增其他条目
+          </button>
+        </div>
       </template>
     </div>
 
@@ -240,7 +290,8 @@ const BASIC_FIELDS = [
 const DEGREES = ['高中', '大专', '本科', '硕士', '博士']
 
 const EXTRA_OPTIONS = [
-  { value: 'experience', label: '项目经历' },
+  { value: 'internship', label: '实习经历' },
+  { value: 'project', label: '项目经历' },
   { value: 'skill', label: '专业技能' },
   { value: 'target', label: '目标岗位' },
   { value: 'soft', label: '软性信息' },
@@ -289,13 +340,13 @@ async function load() {
   try {
     const res = await getProfileForm()
     const d = res.data || {}
-    Object.assign(form.basic_info, d.basic_info || {})
+    form.basic_info = { ...(d.basic_info || {}) }
     form.education = (d.education || []).map((e) => ({ ...e }))
     form.awards = (d.awards || []).join('\n')
     form.social = (d.social || []).map((s) => ({ ...s }))
-    form.extra = (d.extra || []).map((e) => ({ ...e }))
+    form.extra = (d.extra || []).map(normalizeExtra)
   } catch {
-    // 静默：无已存数据
+    // 加载失败时保留当前表单内容，避免已填数据被清空
   }
   // 头像
   try {
@@ -309,8 +360,40 @@ async function load() {
 function addEducation() {
   form.education.push({ school: '', degree: '', major: '', courses: '', start: '', end: '', gpa: '' })
 }
+function emptyExtra(category: string): ProfileExtraEntry {
+  return {
+    category,
+    title: '',
+    content: '',
+    exp_type: category === 'internship' || category === 'project' ? category : '',
+    role: '',
+    start: '',
+    end: '',
+    current: false,
+    tech_stack: '',
+    duty: '',
+    achievement: '',
+  }
+}
+
+function normalizeExtra(raw: any): ProfileExtraEntry {
+  return { ...emptyExtra(raw?.category || 'project'), ...(raw || {}) }
+}
+
+function isExperienceExtra(ext: ProfileExtraEntry): boolean {
+  return ext.category === 'internship' || ext.category === 'project'
+}
+
+function onExtraCategoryChange(ext: ProfileExtraEntry) {
+  ext.exp_type = isExperienceExtra(ext) ? ext.category : ''
+}
+
+function addExperience(category: 'internship' | 'project') {
+  form.extra.push(emptyExtra(category))
+}
+
 function addExtra() {
-  form.extra.push({ category: 'experience', title: '', content: '' })
+  form.extra.push(emptyExtra('skill'))
 }
 
 function next() {
@@ -462,6 +545,8 @@ async function saveAll() {
   cursor: pointer;
 }
 .wiz-add:hover { background: var(--color-accent-50); }
+.wiz-add-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.period-end { display: flex; align-items: center; gap: var(--space-2); width: 100%; }
 
 .avatar-box { display: flex; gap: var(--space-6); align-items: flex-start; }
 .avatar-preview {

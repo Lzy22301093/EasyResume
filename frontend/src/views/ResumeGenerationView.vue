@@ -380,6 +380,9 @@
             <div class="panel-head">
               <h2>自我评价</h2>
               <div class="head-actions">
+                <el-button size="small" type="primary" plain :loading="softImportLoading" @click="importSoftFromProfile">
+                  <Sparkles :size="14" style="margin-right: 4px" />从画像导入
+                </el-button>
                 <el-button size="small" type="primary" :loading="softLoading" @click="generateSoft">
                   <Sparkles :size="14" style="margin-right: 4px" />AI 生成
                 </el-button>
@@ -622,6 +625,7 @@ const directionError = ref('')
 const dirsFromProfile = ref<string[]>([])
 const starLoading = ref(false)
 const softLoading = ref(false)
+const softImportLoading = ref(false)
 const softSaving = ref(false)
 const softSaved = ref(false)
 
@@ -1062,6 +1066,36 @@ async function importFromKnowledge() {
 }
 
 // ---- 软性信息 ----
+
+async function importSoftFromProfile() {
+  softImportLoading.value = true
+  try {
+    const source = await ensureProfileSource()
+    const values = source.soft_info || {}
+    const available = Object.values(values).filter((v) => (v || '').trim()).length
+    if (!available) {
+      ElMessage.warning('个人画像中暂无可导入的软性信息')
+      return
+    }
+    await ElMessageBox.confirm(
+      '将从个人画像导入软性信息，仅补充当前为空的字段，不会覆盖已填写内容。',
+      '从画像导入自我评价',
+      { confirmButtonText: '开始导入', cancelButtonText: '取消', type: 'info' },
+    )
+    const fields = ['personality', 'vision', 'disinterested', 'self_eval'] as const
+    for (const field of fields) {
+      const value = (values[field] || '').trim()
+      if (value && !(wizard.soft_info[field] || '').trim()) wizard.soft_info[field] = value
+    }
+    softSaved.value = false
+    ElMessage.success('已从个人画像导入软性信息')
+  } catch (e: any) {
+    if (e !== 'cancel' && e !== 'close') ElMessage.error(e?.response?.data?.detail || '从画像导入失败')
+  } finally {
+    softImportLoading.value = false
+  }
+}
+
 
 async function generateSoft() {
   softLoading.value = true

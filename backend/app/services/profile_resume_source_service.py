@@ -54,6 +54,7 @@ class ProfileResumeSourceService:
         )
         included: list[ProfileItem] = []
         basic_info: dict[str, str] = {}
+        soft_info: dict[str, str] = {}
         educations: list[ResumeEducationData] = []
         skills: list[ResumeSkillData] = []
         experiences: list[ResumeExperienceData] = []
@@ -73,6 +74,9 @@ class ProfileResumeSourceService:
             elif item.category == "experience":
                 included.append(item)
                 experiences.append(self._experience(item, payload))
+            elif item.category == "soft":
+                included.append(item)
+                self._merge_soft_info(soft_info, item)
             elif item.category == "target":
                 included.append(item)
                 directions.append(self._direction(item, payload))
@@ -82,6 +86,7 @@ class ProfileResumeSourceService:
         updated_values = [i.updated_at for i in included if i.updated_at is not None]
         return ProfileResumeSource(
             basic_info=basic_info,
+            soft_info=soft_info,
             educations=educations,
             skills=skills,
             internships=internships,
@@ -97,6 +102,18 @@ class ProfileResumeSourceService:
                 target[key] = str(value)
         key = self.BASIC_TITLES.get(item.title)
         if key and item.content and not target.get(key):
+            target[key] = item.content
+
+    @staticmethod
+    def _merge_soft_info(target: dict[str, str], item: ProfileItem) -> None:
+        labels = {
+            "性格特点": "personality",
+            "职业愿景": "vision",
+            "不感兴趣的方向": "disinterested",
+            "自我评价": "self_eval",
+        }
+        key = labels.get(item.title)
+        if key and item.content:
             target[key] = item.content
 
     @staticmethod
@@ -124,8 +141,16 @@ class ProfileResumeSourceService:
     @staticmethod
     def _experience(item: ProfileItem, payload: dict[str, Any]) -> ResumeExperienceData:
         exp_type = str(payload.get("exp_type") or "").strip()
-        if not exp_type or exp_type == "experience":
-            exp_type = "project" if "项目" in f"{item.title}{item.content}" else "internship"
+        if exp_type not in {"internship", "project"}:
+            text = f"{item.title} {item.content or ''}".lower()
+            internship_keywords = ("实习", "工作", "公司", "岗位", "职场")
+            project_keywords = ("项目", "平台", "系统", "网站", "应用", "工具", "论文", "设计", "实现", "开发")
+            if any(k in text for k in internship_keywords):
+                exp_type = "internship"
+            elif any(k in text for k in project_keywords):
+                exp_type = "project"
+            else:
+                exp_type = "internship"
         return ResumeExperienceData(
             exp_type=exp_type,
             company=str(payload.get("company") or ""),

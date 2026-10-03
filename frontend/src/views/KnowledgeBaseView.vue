@@ -1,26 +1,27 @@
 <template>
   <div class="kb-page">
-    <AppNav>
-      <div class="seg" role="tablist">
-        <button
-          class="seg-btn"
-          :class="{ active: viewMode === 'list' }"
-          @click="viewMode = 'list'"
-        >列表</button>
-        <button
-          class="seg-btn"
-          :class="{ active: viewMode === 'graph' }"
-          @click="viewMode = 'graph'"
-        >节点图</button>
-      </div>
-      <el-button type="primary" @click="openWizard">
-        <Plus :size="16" />完善画像
-      </el-button>
-    </AppNav>
+    <AppNav />
     <div class="kb-titlebar">
       <div class="kb-titlebar-text">
         <div class="kb-title">个人画像</div>
         <p class="kb-sub">基本信息、教育、实习/项目、技能与目标，沉淀为可复用的画像</p>
+      </div>
+      <div class="kb-actions">
+        <div class="seg" role="tablist" aria-label="个人画像视图">
+          <button
+            class="seg-btn"
+            :class="{ active: viewMode === 'list' }"
+            @click="viewMode = 'list'"
+          >列表</button>
+          <button
+            class="seg-btn"
+            :class="{ active: viewMode === 'graph' }"
+            @click="viewMode = 'graph'"
+          >节点图</button>
+        </div>
+        <el-button type="primary" @click="openWizard">
+          <Plus :size="16" />完善画像
+        </el-button>
       </div>
     </div>
 
@@ -543,6 +544,7 @@ function sourceLabel(t: string) {
 
 <style scoped>
 .kb-page {
+  height: 100%;
   min-height: 100vh;
   display: flex;
   flex-direction: column;

@@ -114,3 +114,44 @@ def test_empty_modules_hidden():
     )
     titles = [s["title"] for s in assembled.sections]
     assert titles == ["基本信息"]
+
+
+def test_resume_keeps_full_internship_and_project_content():
+    long_duty = "负责用户增长链路的需求分析、方案设计、接口开发、联调测试和上线观察。"
+    long_action = "重构关键查询并引入缓存与异步任务，建立监控告警和回滚机制。"
+    long_result = "核心接口 P95 延迟下降百分之四十五，稳定性显著提升。"
+    experiences = [
+        StarResultItem(
+            exp_type="实习",
+            company="某科技公司",
+            title="后端实习生",
+            duration="2024.01-2024.03",
+            duty=long_duty,
+            action=long_action,
+            achievement=long_result,
+        )
+    ] + [
+        StarResultItem(
+            exp_type="项目",
+            company=f"项目{i}",
+            title="负责人",
+            duration="2024",
+            duty=f"完整负责项目{i}的需求、设计、开发、测试和交付。",
+            result=f"项目{i}按期上线并获得稳定使用。",
+        )
+        for i in range(1, 6)
+    ]
+    assembled = assemble_with_template(
+        basic={"name": "完整内容"},
+        directions=[],
+        experiences=experiences,
+        soft={},
+        template_key="campus_one_page",
+        page_preference="one_page",
+    )
+    text = assembled.to_content()["raw_text"]
+    assert long_duty in text
+    assert long_action in text
+    assert long_result in text
+    assert all(f"项目{i}" in text for i in range(1, 6))
+    assert "…" not in text
