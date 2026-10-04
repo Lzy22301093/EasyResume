@@ -1,8 +1,8 @@
-# CareerAssistant
+# EasyResume
 
 把求职从「到处复制粘贴」变成可复用的个人资产。
 
-CareerAssistant 是一款面向求职全流程的 AI 工作台：以**个人画像**为唯一事实源，生成并维护简历版本，针对具体岗位做匹配与定向改写，用语音模拟面试检验准备度，并把面试反馈安全地沉淀回画像。
+EasyResume 是一款面向求职全流程的 AI 工作台：以**个人画像**为唯一事实源，生成并维护简历版本，针对具体岗位做匹配与定向改写，用语音模拟面试检验准备度，并把面试反馈安全地沉淀回画像。
 
 ## 你可以在里面做什么
 
@@ -51,7 +51,7 @@ CareerAssistant 是一款面向求职全流程的 AI 工作台：以**个人画�
 ### Docker 部署（推荐）
 
 ```bash
-git clone <repo-url> && cd CareerAssistant
+git clone <repo-url> && cd EasyResume
 
 # 配置环境变量
 cp .env.example .env

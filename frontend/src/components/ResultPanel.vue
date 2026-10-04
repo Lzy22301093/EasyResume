@@ -4,7 +4,7 @@
     <ScreenState
       v-if="!session.sessionId"
       type="empty"
-      title="CareerAssistant"
+      title="EasyResume"
       desc="在左侧对话面板中输入 JD 和简历，分析结果将在此展示"
     />
 

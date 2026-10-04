@@ -1,6 +1,6 @@
-# CareerAssistant — Frontend Design Direction
+# EasyResume — Frontend Design Direction
 
-> 本文件定义 CareerAssistant 的视觉设计语言。所有前端实现应以此为准。
+> 本文件定义 EasyResume 的视觉设计语言。所有前端实现应以此为准。
 > 版本：draft-1 · 2026-08-18
 
 ---
@@ -15,7 +15,7 @@
 - "我的简历够好吗？怎么改？"
 - "面试会问什么？我怎么准备？"
 
-CareerAssistant 把这三个问题压缩成一个流程：**贴入 JD + 简历 → 得到差距分析 + 优化简历 + 面试题库 + 求职信**。核心价值是**消除不确定性**——把模糊的焦虑变成结构化的、可执行的行动方案。
+EasyResume 把这三个问题压缩成一个流程：**贴入 JD + 简历 → 得到差距分析 + 优化简历 + 面试题库 + 求职信**。核心价值是**消除不确定性**——把模糊的焦虑变成结构化的、可执行的行动方案。
 
 ### 2. 目标用户是谁？
 
@@ -51,10 +51,10 @@ CareerAssistant 把这三个问题压缩成一个流程：**贴入 JD + 简历 �
 
 | 方向 | 为什么不合适 |
 |------|-------------|
-| **SaaS Dashboard**（如 Stripe Dashboard） | CareerAssistant 不是仪表盘——用户不需要实时监控指标，而是阅读分析结果。Dashboard 的卡片网格布局会把结构化的分析结果打碎成互不相关的碎片 |
+| **SaaS Dashboard**（如 Stripe Dashboard） | EasyResume 不是仪表盘——用户不需要实时监控指标，而是阅读分析结果。Dashboard 的卡片网格布局会把结构化的分析结果打碎成互不相关的碎片 |
 | **AI Chatbot**（如 ChatGPT 克隆） | 虽然有对话界面，但核心价值不在对话本身，而在结构化的分析产出。纯聊天界面会隐藏这些产出，降低信息密度 |
 | **Creative Portfolio**（如 Dribbble 展示型） | 过度的视觉表现会喧宾夺主。用户要的是简历内容好不好，不是界面好不好看 |
-| **文档协作工具**（如 Google Docs） | 接近但不完全对——CareerAssistant 是单用户、结果导向的，不需要多人协作的 UI 模式 |
+| **文档协作工具**（如 Google Docs） | 接近但不完全对——EasyResume 是单用户、结果导向的，不需要多人协作的 UI 模式 |
 | **编辑型文档工具** ✓ | 最契合——用户输入原始材料（JD + 简历），系统输出结构化的专业文档（分析报告 + 优化简历 + 面试准备）。界面需要做的就是清晰地呈现这些文档 |
 
 ---
@@ -533,7 +533,7 @@ Radius: 与实际内容一致
 | 无 CSS 变量 / 设计 token | 建立 CSS 变量体系 | P0 |
 | 空状态只有图标 + 一句话 | 增加具体引导文字和行动建议 | P2 |
 | 无 Lucide Icons，使用 Element Plus Icons | 迁移到 Lucide Icons | P2 |
-| `<title>` 是 "frontend" | 改为 "CareerAssistant" | P0 |
+| `<title>` 是 "frontend" | 改为 "EasyResume" | P0 |
 | 无 favicon | 增加 favicon | P0 |
 
 ### 可以保留的

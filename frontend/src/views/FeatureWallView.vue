@@ -4,7 +4,7 @@
 
     <main class="wall-main">
       <div class="wall-hero">
-        <p class="eyebrow">CareerAssistant</p>
+        <p class="eyebrow">EasyResume</p>
         <h1 class="wall-title">功能墙</h1>
         <p class="wall-subtitle">把求职，变成一件有把握的事。</p>
       </div>

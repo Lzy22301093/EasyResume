@@ -1,4 +1,4 @@
-# CareerAssistant 前端设计规范（Claude 风格）
+# EasyResume 前端设计规范（Claude 风格）
 
 > 本文件是前端重设计的**唯一视觉契约**。所有页面/组件/样式都必须遵循本规范。
 > 视觉 token 统一定义在 `src/styles/tokens.css`，Element Plus 覆盖在 `src/styles/element-overrides.css`，其余只读这两层。

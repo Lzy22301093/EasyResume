@@ -1,7 +1,7 @@
 /*
  * Element Plus Theme Overrides
  *
- * 通过 CSS 变量覆盖 Element Plus 默认主题，使其与 CareerAssistant
+ * 通过 CSS 变量覆盖 Element Plus 默认主题，使其与 EasyResume
  * 设计系统（tokens.css）保持一致（Claude 暖色纸感）。此文件必须
  * 在 element-plus/dist/index.css 之后引入。
  *

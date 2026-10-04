@@ -9,7 +9,7 @@
         <div class="brand-icon">
           <Sparkles :size="26" />
         </div>
-        <h1 class="brand-title">CareerAssistant</h1>
+        <h1 class="brand-title">EasyResume</h1>
         <p class="brand-subtitle">AI 求职助手</p>
         <p class="brand-desc">
           贴入目标岗位 JD，上传简历，<br />

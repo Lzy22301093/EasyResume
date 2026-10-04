@@ -8,7 +8,7 @@
             <polyline points="14 2 14 8 20 8"/>
           </svg>
         </span>
-        <span class="brand-name">CareerAssistant</span>
+        <span class="brand-name">EasyResume</span>
       </router-link>
 
       <nav class="nav-links">
