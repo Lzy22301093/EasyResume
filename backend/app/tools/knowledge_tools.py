@@ -4,7 +4,31 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel, Field
+
+from app.llm.structured import parse_structured_json
+
 from .base import Tool, ToolResult
+
+
+class GeneratedQuestion(BaseModel):
+    category: str
+    topic: str = ""
+    difficulty: str = "medium"
+    question: str
+    key_points: list[str] = Field(default_factory=list)
+    sample_answer: str = ""
+
+
+class GeneratedQuestionList(BaseModel):
+    questions: list[GeneratedQuestion] = Field(default_factory=list)
+
+
+class IndustryStandards(BaseModel):
+    title: str
+    recommendations: list[str] = Field(default_factory=list)
+    common_mistakes: list[str] = Field(default_factory=list)
+    best_practices: list[str] = Field(default_factory=list)
 
 
 class QuestionBankTool(Tool):
@@ -173,16 +197,9 @@ class QuestionBankTool(Tool):
 返回且仅返回 JSON 对象。"""
 
         response = await self._llm.generate(prompt)
-        import json
-
         try:
-            text = response.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1]
-            if text.endswith("```"):
-                text = text.rsplit("```", 1)[0]
-            result = json.loads(text)
-            return result.get("questions", [])
+            result = parse_structured_json(response, GeneratedQuestionList)
+            return [q.model_dump() for q in result.questions]
         except Exception:
             return []
 
@@ -288,14 +305,7 @@ class IndustryStandardsTool(Tool):
 返回且仅返回 JSON 对象。"""
 
         response = await self._llm.generate(prompt)
-        import json
-
         try:
-            text = response.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1]
-            if text.endswith("```"):
-                text = text.rsplit("```", 1)[0]
-            return json.loads(text)
+            return parse_structured_json(response, IndustryStandards).model_dump()
         except Exception:
             return {"title": f"{industry} - {topic}", "recommendations": []}

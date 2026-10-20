@@ -13,44 +13,32 @@ from typing import Any, Type, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from app.agents.base import BaseAgent
-from app.llm import LLMProvider, Message, Role
+from app.llm import LLMProvider
+from app.llm.json_extract import extract_json_object
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
 
-class _StructuredCallAgent(BaseAgent):
-    """内部结构化调用 Agent（无工具，单次调用）。"""
+def parse_structured_json(raw: str, schema: Type[T]) -> T:
+    """解析 LLM JSON 输出并执行 Pydantic schema 校验。
 
-    name = "structured_call"
+    所有 LLM 结构化结果统一经过本入口，禁止调用方直接 json.loads 后裸用。
+    """
+    extracted = extract_json_object(raw)
+    if extracted is None:
+        raise ValueError("输出中未找到 JSON 对象")
+    return schema.model_validate(extracted)
 
-    def __init__(
-        self,
-        llm: LLMProvider,
-        system_prompt: str,
-        model: str | None = None,
-        temperature: float = 0.3,
-        max_tokens: int = 2048,
-    ):
-        super().__init__(llm, model=model)
-        self._system_prompt = system_prompt
-        self.temperature = temperature
-        self.max_tokens = max_tokens
-        # 强制 LLM 输出合法 JSON（response_format=json_object）。
-        # 结构化能力单元只认 JSON；不开启时 MIMO 可能返回散文/markdown，
-        # 导致 extract_json 找不到 JSON 对象而"校验失败"。见 agents/base.py。
-        self.json_mode = True
 
-    def build_messages(self, **kwargs) -> list[Message]:
-        return [
-            Message(role=Role.SYSTEM, content=self._system_prompt),
-            Message(role=Role.USER, content=kwargs["user_content"]),
-        ]
+def __getattr__(name: str):
+    """兼容历史测试/调用方按原路径获取内部结构化 Agent。"""
+    if name == "_StructuredCallAgent":
+        from app.llm.structured_call import _StructuredCallAgent
 
-    def parse_response(self, content: str) -> dict:
-        return {"_content": content}
+        return _StructuredCallAgent
+    raise AttributeError(name)
 
 
 async def ainvoke_json_with_schema(
@@ -81,6 +69,8 @@ async def ainvoke_json_with_schema(
     Raises:
         ValueError: 所有尝试均未通过校验。
     """
+    from app.llm.structured_call import _StructuredCallAgent
+
     agent = _StructuredCallAgent(
         llm, system_prompt, model=model, temperature=temperature, max_tokens=max_tokens
     )
@@ -90,10 +80,7 @@ async def ainvoke_json_with_schema(
         try:
             result = await agent.run(user_content=user_content)
             raw = result.get("_content", "")
-            extracted = BaseAgent.extract_json(raw)
-            if extracted is None:
-                raise ValueError("输出中未找到 JSON 对象")
-            return schema.model_validate(extracted)
+            return parse_structured_json(raw, schema)
         except ValidationError as e:
             last_error = e
             logger.warning(f"schema 校验失败 (attempt {attempt + 1}/{max_attempts}): {e}")

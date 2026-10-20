@@ -21,6 +21,14 @@
           <component :is="m.icon" :size="15" class="nav-icon" />
           <span>{{ m.label }}</span>
         </router-link>
+        <router-link to="/features" class="nav-link nav-link-secondary">
+          <BookOpen :size="15" class="nav-icon" />
+          <span>功能介绍</span>
+        </router-link>
+        <router-link v-if="isDemo" to="/about" class="nav-link nav-link-secondary">
+          <Github :size="15" class="nav-icon" />
+          <span>克隆运行</span>
+        </router-link>
       </nav>
     </div>
 
@@ -34,6 +42,9 @@
         </button>
         <template #dropdown>
           <el-dropdown-menu>
+            <el-dropdown-item command="settings">
+              <Settings :size="14" style="margin-right: 6px" />偏好设置
+            </el-dropdown-item>
             <el-dropdown-item command="logout">
               <LogOut :size="14" style="margin-right: 6px" />退出登录
             </el-dropdown-item>
@@ -42,10 +53,11 @@
       </el-dropdown>
     </div>
   </header>
+  <SettingsDrawer v-model="showSettings" />
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Library,
@@ -56,26 +68,37 @@ import {
   Code2,
   LogOut,
   ChevronDown,
+  Settings,
   Sparkles,
+  BookOpen,
+  Github,
 } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/auth'
+import SettingsDrawer from './SettingsDrawer.vue'
+import { isDemoMode } from '../demo'
 
 const router = useRouter()
 const auth = useAuthStore()
+const showSettings = ref(false)
+const isDemo = isDemoMode()
 
 const modules = [
-  { label: '功能墙', route: '/', icon: Library },
+  { label: '首页', route: '/', icon: Library },
+  { label: '个人画像', route: '/knowledge-base', icon: User },
   { label: '简历生成', route: '/resume-generation', icon: Sparkles },
   { label: '简历工作台', route: '/resume-library', icon: FileText },
-  { label: '个人画像', route: '/knowledge-base', icon: User },
-  { label: '投递记录', route: '/applications', icon: Megaphone },
-  { label: '模拟面试', route: '/mock-interview', icon: MessagesSquare },
   { label: '求职分析', route: '/workspace', icon: Code2 },
+  { label: '模拟面试', route: '/mock-interview', icon: MessagesSquare },
+  { label: '投递记录', route: '/applications', icon: Megaphone },
 ]
 
 const initials = computed(() => (auth.user?.username || '用户').slice(0, 1).toUpperCase())
 
 function handleCommand(cmd: string) {
+  if (cmd === 'settings') {
+    showSettings.value = true
+    return
+  }
   if (cmd === 'logout') {
     auth.logout()
     router.push('/login')
@@ -163,6 +186,11 @@ function handleCommand(cmd: string) {
 .nav-link.router-link-exact-active {
   color: var(--color-accent-600);
   background: var(--color-accent-100);
+}
+
+.nav-link-secondary {
+  opacity: 0.92;
+  border: 1px solid var(--color-gray-200);
 }
 
 .nav-right {

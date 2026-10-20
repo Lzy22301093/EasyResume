@@ -23,10 +23,11 @@ class Settings(BaseSettings):
     # 缺失时 create_llm_provider() 会抛出明确的 ValueError。
     openai_api_key: str = ""
     llm_base_url: str = "https://token-plan-cn.xiaomimimo.com/v1"
-    llm_model: str = "mimo-v2.5-pro"
-    # 快速模型：用于提取类 Agent（JD/画像/差距/评审/澄清），
-    # 为空时回退到 llm_model。
-    fast_model: str = ""
+    # 生成类主模型（简历/面试出题/求职信等）
+    llm_model: str = "mimo-v2.6-flash"
+    # 快速模型：提取/评审/澄清等；为空回退 llm_model。
+    # 当前全量统一 flash。
+    fast_model: str = "mimo-v2.6-flash"
 
     # 语音模型（共享 base_url / api_key）
     asr_model: str = "mimo-v2.5-asr"

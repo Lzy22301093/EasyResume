@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import pytest
+from pydantic import ValidationError
 from datetime import datetime
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.models.database import Base
+from app.models.orm import User
 from app.services.auth_service import AuthService
 
 
@@ -17,7 +21,7 @@ def jwt_secret():
     """JWT 密钥从环境注入：为测试提供固定密钥，避免依赖 .env。"""
     import app.services.auth_service as auth_module
     original = auth_module.SECRET_KEY
-    auth_module.SECRET_KEY = "test-secret-key-for-pytest"
+    auth_module.SECRET_KEY = "test-secret-key-for-pytest-0123456789"
     yield
     auth_module.SECRET_KEY = original
 
@@ -149,3 +153,63 @@ class TestGetUser:
         """获取不存在的用户返回 None。"""
         assert auth_service.get_user_by_id(999) is None
         assert auth_service.get_user_by_username("nobody") is None
+
+
+def test_legacy_pbkdf2_password_still_verifies_and_upgrades(auth_service: AuthService):
+    """历史 PBKDF2 密码可登录，并在成功后透明升级为 bcrypt。"""
+    import os
+
+    salt = os.urandom(32)
+    key = hashlib.pbkdf2_hmac("sha256", b"password123", salt, 100000)
+    legacy = salt.hex() + ":" + key.hex()
+    user = auth_service.register("legacy", "legacy@example.com", "password123")
+    db = auth_service._get_db()
+    try:
+        row = db.query(User).filter(User.id == user["id"]).first()
+        row.hashed_password = legacy
+        db.commit()
+    finally:
+        db.close()
+
+    result = auth_service.login("legacy", "password123")
+    assert result is not None
+    db = auth_service._get_db()
+    try:
+        row = db.query(User).filter(User.id == user["id"]).first()
+        assert row.hashed_password.startswith(("$2a$", "$2b$", "$2y$"))
+    finally:
+        db.close()
+
+
+def test_register_returns_none_on_unique_key_race(auth_service: AuthService, monkeypatch):
+    """并发注册触发唯一键冲突时返回“已存在”，不向接口抛 500。"""
+    from sqlalchemy.exc import IntegrityError
+
+    def conflict():
+        raise IntegrityError("insert user", {}, Exception("duplicate"))
+
+    # 使用独立会话模拟：让预检查通过，但最终插入提交冲突
+    original_factory = auth_service._db_factory
+
+    class ConflictSession:
+        def __init__(self, session):
+            self.session = session
+
+        def __getattr__(self, name):
+            return getattr(self.session, name)
+
+        def commit(self):
+            raise IntegrityError("insert user", {}, Exception("duplicate"))
+
+    def factory():
+        return ConflictSession(original_factory())
+
+    auth_service._db_factory = factory
+    assert auth_service.register("race", "race@example.com", "password123") is None
+
+
+def test_register_request_rejects_invalid_email():
+    from app.api.auth import RegisterRequest
+
+    with pytest.raises(ValidationError):
+        RegisterRequest(username="testuser", email="not-an-email", password="password123")

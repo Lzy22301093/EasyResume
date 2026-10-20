@@ -205,31 +205,9 @@
         </div>
       </el-tab-pane>
 
-      <!-- 简历内容 Tab -->
-      <el-tab-pane label="简历内容" name="resume">
-        <div v-if="session.resumeContent" class="tab-content">
-          <div v-for="(section, i) in session.resumeContent.sections || []" :key="i" class="resume-section">
-            <h4 class="resume-section-title">{{ section.title }}</h4>
-            <div class="section-content" v-html="renderMarkdown(section.content)" />
-          </div>
-          <div v-if="session.renderConfig" class="render-config">
-            <el-divider />
-            <p class="hint-text">
-              模板: {{ session.renderConfig.template }} |
-              字号: {{ session.renderConfig.font_size }}pt |
-              行距: {{ session.renderConfig.line_spacing }}
-            </p>
-          </div>
-        </div>
-        <SkeletonLoader v-else-if="session.isLoading" variant="text" :lines="6" />
-        <div v-else class="tab-empty">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
-          <p>暂无简历内容</p>
-          <p class="tab-empty-hint">请在左侧对话中提供 JD 和简历以生成优化内容</p>
-        </div>
+      <!-- 岗位定制 Tab -->
+      <el-tab-pane label="岗位定制" name="resume">
+        <TailoredResumePanel />
       </el-tab-pane>
 
       <!-- 面试准备 Tab -->
@@ -326,6 +304,7 @@ import { useSessionStore } from '../stores/session'
 import { exportResume } from '../api/sessions'
 import SkeletonLoader from './SkeletonLoader.vue'
 import ScreenState from './ScreenState.vue'
+import TailoredResumePanel from './resume/TailoredResumePanel.vue'
 
 const session = useSessionStore()
 const exporting = ref(false)
@@ -387,16 +366,6 @@ const scoreColor = computed(() => {
   return 'var(--color-danger-600)'
 })
 
-/** 简单 Markdown 渲染（加粗、换行、列表） */
-function renderMarkdown(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n/g, '<br>')
-    .replace(/^- (.+)/gm, '<li>$1</li>')
-}
 </script>
 
 <style scoped>

@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from app.llm.structured import ainvoke_json_with_schema
+from app.llm.structured import ainvoke_json_with_schema, parse_structured_json
 from app.llm import Message, Response, Role
 
 
@@ -71,3 +71,17 @@ class TestAinvokeJsonWithSchema:
         llm = MockLLM([wrapped])
         out = await ainvoke_json_with_schema(llm, "sys", "user", DemoOutput)
         assert out.name == "赵六"
+
+
+class TestParseStructuredJson:
+    def test_invalid_json_raises_value_error(self):
+        with pytest.raises(ValueError, match="未找到 JSON 对象"):
+            parse_structured_json("这不是 JSON", DemoOutput)
+
+    def test_schema_violation_raises_validation_error(self):
+        with pytest.raises(ValidationError):
+            parse_structured_json('{"name": "张三"}', DemoOutput)
+
+    def test_valid_json_returns_model(self):
+        result = parse_structured_json('{"name": "张三", "score": 99}', DemoOutput)
+        assert result.score == 99

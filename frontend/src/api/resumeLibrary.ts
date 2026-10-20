@@ -61,6 +61,15 @@ export const adoptSectionRewrite = (versionId: number, sectionId: number, rewrit
     })
     .then((r) => r.data)
 
+/** 手动编辑区域正文并生成新版本（可回滚） */
+export const manualEditSection = (versionId: number, sectionId: number, content: string) =>
+  client
+    .post<ResumeLibraryVersion>(`/resumes/versions/${versionId}/manual-edit`, {
+      section_id: sectionId,
+      content,
+    })
+    .then((r) => r.data)
+
 export const importResumeFromSession = (sessionId: string) =>
   client.post<ResumeLibraryDoc>('/resumes/import-from-session', { session_id: sessionId }).then((r) => r.data)
 

@@ -20,7 +20,7 @@ class OpenAIProvider:
         self,
         api_key: str,
         base_url: str | None = None,
-        model: str = "mimo-v2.5-pro",
+        model: str = "mimo-v2.6-flash",
         timeout: float | None = None,
     ):
         # timeout + max_retries=0（A3）：SDK 默认 timeout 600s / 内置重试 2 次，

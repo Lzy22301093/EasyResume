@@ -100,10 +100,21 @@ async def reset_store():
 @pytest.fixture
 async def client():
     """创建异步测试客户端。"""
+    from app.api.auth import require_auth
     from app.main import app
+
+    app.dependency_overrides[require_auth] = lambda: {
+        "id": 777,
+        "username": "testuser",
+        "email": "test@example.com",
+        "is_active": True,
+    }
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            yield c
+    finally:
+        app.dependency_overrides.pop(require_auth, None)
 
 
 # === 测试用例 ===
@@ -346,6 +357,45 @@ class TestFileUpload:
         )
         assert resp.status_code == 404
 
+    async def test_upload_rejects_unsupported_type(self, client: AsyncClient):
+        create_resp = await client.post("/api/sessions/")
+        session_id = create_resp.json()["session_id"]
+        resp = await client.post(
+            f"/api/sessions/{session_id}/upload",
+            files={"file": ("danger.exe", b"MZ", "application/octet-stream")},
+        )
+        assert resp.status_code == 415
+
+    async def test_upload_rejects_oversized_file(self, client: AsyncClient):
+        import app.api.sessions as sessions_mod
+
+        create_resp = await client.post("/api/sessions/")
+        session_id = create_resp.json()["session_id"]
+        with patch.object(sessions_mod, "MAX_DOCUMENT_UPLOAD_BYTES", 5):
+            resp = await client.post(
+                f"/api/sessions/{session_id}/upload",
+                files={"file": ("large.txt", b"123456", "text/plain")},
+            )
+        assert resp.status_code == 413
+
+
+class TestSessionOwnership:
+    """测试会话只对所属用户可见。"""
+
+    async def test_other_user_session_is_hidden(self, client: AsyncClient):
+        store = await get_store()
+        await store.create("other-user-session", {
+            "session_id": "other-user-session",
+            "user_id": 888,
+            "stage": SessionStage.INIT,
+            "messages": [],
+            "uploaded_files": [],
+        })
+
+        assert (await client.get("/api/sessions/other-user-session")).status_code == 404
+        sessions = (await client.get("/api/sessions/")).json()
+        assert all(item["session_id"] != "other-user-session" for item in sessions)
+
 
 class TestDeleteSession:
     """测试删除会话。"""
@@ -407,6 +457,7 @@ class TestExportResume:
         store = await get_store()
         await store.create(sid, {
             "session_id": sid,
+            "user_id": 777,
             "stage": SessionStage.COMPLETED,
             "messages": [],
             "jd_analysis": {},
@@ -513,3 +564,29 @@ def _parse_sse(text: str) -> list[dict]:
             current_data = None
 
     return events
+
+
+class TestListSessionsPagination:
+    """历史会话接口必须支持分页，避免无上限返回。"""
+
+    async def test_limit_and_offset(self, client: AsyncClient):
+        store = await get_store()
+        for index, updated_at in enumerate([
+            "2026-01-01T00:00:00",
+            "2026-01-02T00:00:00",
+            "2026-01-03T00:00:00",
+        ], start=1):
+            data = _new_session_data(f"pagination-{index}")
+            data.update({"user_id": 777, "updated_at": updated_at})
+            await store.create(f"pagination-{index}", data)
+
+        resp = await client.get("/api/sessions/?limit=2&offset=1")
+        assert resp.status_code == 200
+        assert [item["session_id"] for item in resp.json()] == [
+            "pagination-2",
+            "pagination-1",
+        ]
+
+    async def test_limit_is_bounded(self, client: AsyncClient):
+        resp = await client.get("/api/sessions/?limit=1000")
+        assert resp.status_code == 422

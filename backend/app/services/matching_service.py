@@ -91,9 +91,7 @@ class MatchService:
             raise MatchError(f"page_preference 非法: {data.page_preference!r}")
         self.get_posting(db, user_id, data.job_posting_id)
         if data.resume_version_id is not None:
-            version = db.query(ResumeVersion).filter(ResumeVersion.id == data.resume_version_id).first()
-            if version is None:
-                raise MatchError("简历版本不存在")
+            self._get_resume_version(db, user_id, data.resume_version_id)
         task = MatchTask(
             user_id=user_id,
             job_posting_id=data.job_posting_id,
@@ -104,6 +102,21 @@ class MatchService:
         db.commit()
         db.refresh(task)
         return task
+
+    @staticmethod
+    def _get_resume_version(db: DBSession, user_id: int, version_id: int) -> ResumeVersion:
+        """读取简历版本并校验归属；支持 user_id / 所属文档 / 所属会话三种归属来源。"""
+        version = db.query(ResumeVersion).filter(ResumeVersion.id == version_id).first()
+        if version is None:
+            raise MatchError("简历版本不存在")
+        owner_ids = {
+            version.user_id,
+            version.document.user_id if version.document is not None else None,
+            version.session.user_id if version.session is not None else None,
+        }
+        if user_id not in owner_ids:
+            raise MatchError("简历版本不存在")
+        return version
 
     def get_task(self, db: DBSession, user_id: int, task_id: int) -> MatchTask:
         task = db.query(MatchTask).filter(MatchTask.id == task_id, MatchTask.user_id == user_id).first()
@@ -156,8 +169,8 @@ class MatchService:
                 raise MatchError("暂无已确认画像，请先到个人画像完善并确认条目")
             resume_content: dict[str, Any] | None = None
             if task.resume_version_id:
-                version = db.query(ResumeVersion).filter(ResumeVersion.id == task.resume_version_id).first()
-                resume_content = parse_json_object(version.content_json) if version else None
+                version = self._get_resume_version(db, user_id, task.resume_version_id)
+                resume_content = parse_json_object(version.content_json)
 
             jd_analysis = await agents["jd_analyzer"].run(jd_text=posting.jd_text)
             history[-1]["status"] = "done"

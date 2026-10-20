@@ -13,6 +13,9 @@ import type {
   DirectionManualInput,
   DirectionRecommendationResult,
   ProfileUpdateProposal,
+  ResumeImportApplyRequest,
+  ResumeImportApplyResult,
+  ResumeImportPreview,
   SoftInfo,
 } from '../types'
 
@@ -106,4 +109,36 @@ export function getProfileForm() {
 
 export function saveProfileForm(data: ProfileFormSave) {
   return client.post<ProfileFormData>('/profile/form', data)
+}
+
+// 简历附件导入个人画像：先预览抽取结果，用户确认后再写入
+export function previewResumeImport(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  return client.post<ResumeImportPreview>('/profile/resume-import/preview', form, { timeout: 180000 })
+}
+
+export function previewResumeImportFromLibrary(documentId: number, versionId?: number) {
+  return client.post<ResumeImportPreview>('/profile/resume-import/preview-library', {
+    document_id: documentId,
+    version_id: versionId ?? null,
+  }, { timeout: 180000 })
+}
+
+export function applyResumeImport(data: ResumeImportApplyRequest) {
+  return client.post<ResumeImportApplyResult>('/profile/resume-import/apply', data)
+}
+
+export function syncProfileToLibrary(data: {
+  document_id: number
+  fields: Record<string, string>
+  note?: string
+}) {
+  return client.post<{
+    document_id: number
+    version_id: number
+    version: number
+    changed_fields: string[]
+    message: string
+  }>('/profile/resume-import/sync-to-library', data)
 }

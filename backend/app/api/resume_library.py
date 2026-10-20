@@ -27,6 +27,7 @@ from app.models.schemas import (
     ResumeVersionOut,
     ResumeLayoutExportRequest,
     SectionAdoptRequest,
+    SectionManualEditRequest,
     SectionRewriteRequest,
     SessionImportRequest,
     VersionPagePreferenceRequest,
@@ -287,6 +288,23 @@ async def rewrite_section(
 
         logging.getLogger(__name__).exception(f"[Rewrite] section={section_id} 未处理异常")
         raise HTTPException(status_code=502, detail=f"改写生成失败: {e}")
+
+
+@router.post("/versions/{version_id}/manual-edit", response_model=ResumeVersionOut)
+async def manual_edit_section(
+    version_id: int,
+    data: SectionManualEditRequest,
+    user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """手动编辑区域文本并生成新版本（可回滚），不走 AI。"""
+    try:
+        version = service.adopt_section_rewrite(
+            db, user["id"], version_id, data.section_id, data.content
+        )
+    except ResumeLibraryError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return _serialize_version(version, current_version_id=version.id)
 
 
 @router.post("/versions/{version_id}/adopt-rewrite", response_model=ResumeVersionOut)

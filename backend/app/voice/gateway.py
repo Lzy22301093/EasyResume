@@ -20,13 +20,16 @@ import asyncio
 import base64
 import json
 import logging
+import time
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
 from app.config import settings
 from app.interview.handler import InterviewHandler
+from app.interview.nodes import build_opening
 from app.llm.openai_provider import OpenAIProvider
+from app.services.auth_service import AuthService
 from app.voice.asr_service import ASRService
 from app.voice.audio_utils import pcm16_chunks_to_wav_b64
 from app.voice.chat_handler import VoiceChatHandler
@@ -50,9 +53,10 @@ MAX_AUDIO_FRAMES = 500
 class InterviewSession:
     """单次 WebSocket 连接的面试会话状态。"""
 
-    def __init__(self, ws: WebSocket, interview_id: str = ""):
+    def __init__(self, ws: WebSocket, interview_id: str = "", user_id: int | None = None):
         self.ws = ws
         self.interview_id = interview_id
+        self.user_id = user_id
         self.interrupt_event = asyncio.Event()
         self.tts_playing = False
         self.speech_task: asyncio.Task | None = None
@@ -128,10 +132,40 @@ def init_voice_services(handler: InterviewHandler) -> None:
 
 # ── WebSocket 端点 ──────────────────────────────────────
 
+async def _authenticate_ws(ws: WebSocket) -> dict[str, Any] | None:
+    """读取首条 AUTH 消息并校验 JWT，认证失败关闭连接。"""
+    try:
+        raw = await asyncio.wait_for(ws.receive_text(), timeout=5)
+        msg = parse_client_msg(raw)
+        if msg is None or msg.type != ClientMsgType.AUTH or not msg.token:
+            raise ValueError("缺少认证消息")
+        payload = AuthService.decode_token(msg.token)
+        if not payload or not payload.get("sub"):
+            raise ValueError("登录凭证无效")
+        user = AuthService().get_user_by_id(int(payload["sub"]))
+        if not user or not user.get("is_active", True):
+            raise ValueError("用户不可用")
+        return user
+    except Exception as e:
+        logger.warning(f"[WS] authentication failed: {e}")
+        try:
+            await ws.send_text(encode_server_msg(ServerMsg(
+                type=ServerMsgType.ERROR,
+                message="认证失败，请重新登录",
+            )))
+            await ws.close(code=4401)
+        except Exception:
+            pass
+        return None
+
+
 async def websocket_interview(ws: WebSocket) -> None:
     """WebSocket /ws/interview 入口。"""
     await ws.accept()
-    session = InterviewSession(ws)
+    user = await _authenticate_ws(ws)
+    if user is None:
+        return
+    session = InterviewSession(ws, user_id=user["id"])
     queue: asyncio.Queue[ClientMsg | None] = asyncio.Queue()
 
     recv_task = asyncio.create_task(_receiver(ws, queue, session))
@@ -272,17 +306,28 @@ async def _handle_start(session: InterviewSession, msg: ClientMsg) -> None:
 
     # 应用用户 TTS 偏好
     session.apply_tts_prefs(voice=msg.voice, speed=msg.speed, style=msg.tts_style)
+    session.clear_interrupt()
 
-    try:
-        result = await _interview_handler.start_interview(
+    opening = build_opening(msg.jd_analysis)
+    start_task = asyncio.create_task(
+        _interview_handler.start_interview(
             jd_analysis=msg.jd_analysis,
             profile=msg.profile,
             referenced_questions=msg.referenced_questions or None,
+            referenced_question_items=msg.referenced_question_items or None,
             max_turns=msg.max_turns,
-            user_id=msg.user_id,
+            user_id=session.user_id,
             resume=msg.resume or None,
             use_profile_as_supplement=bool(getattr(msg, "use_profile_as_supplement", True)),
         )
+    )
+    opening_tts_task = asyncio.create_task(_tts_and_send(session, opening))
+
+    try:
+        # 开场白与结构化面试计划并行：用户先听到开场，生成期间不空等。
+        await opening_tts_task
+        await _send(ws, ServerMsg(type=ServerMsgType.THINKING))
+        result = await start_task
         interview_id = result["interview_id"]
         session.interview_id = interview_id
 
@@ -291,11 +336,15 @@ async def _handle_start(session: InterviewSession, msg: ClientMsg) -> None:
             interview_id=interview_id,
         ))
 
-        question = result.get("question", "请介绍一下你自己。")
+        question = result.get("next_question") or result.get("question", "请介绍一下你自己。")
         await _tts_and_send(session, question)
 
         logger.info(f"[WS] interview started: {interview_id}")
     except Exception as e:
+        if not start_task.done():
+            start_task.cancel()
+        if not opening_tts_task.done():
+            opening_tts_task.cancel()
         logger.error(f"[WS] start interview failed: {e}")
         await _send(ws, ServerMsg(
             type=ServerMsgType.ERROR,
@@ -320,7 +369,11 @@ async def _handle_resume(session: InterviewSession, msg: ClientMsg) -> None:
         logger.error(f"[WS] resume load failed: {e}")
         state = None
 
-    if not state or state.get("is_complete"):
+    if (
+        not state
+        or state.get("user_id") != session.user_id
+        or state.get("is_complete")
+    ):
         await _send(ws, ServerMsg(
             type=ServerMsgType.ERROR,
             message="面试已结束或不存在，请重新开始",
@@ -357,6 +410,7 @@ async def _handle_speech(session: InterviewSession, audio_buffer: list[bytes]) -
 
 async def _run_speech_pipeline(session: InterviewSession, audio_buffer: list[bytes]) -> None:
     ws = session.ws
+    pipeline_started = time.perf_counter()
 
     # 1. ASR
     wav_b64 = pcm16_chunks_to_wav_b64(audio_buffer)
@@ -371,6 +425,7 @@ async def _run_speech_pipeline(session: InterviewSession, audio_buffer: list[byt
         return
 
     await _send(ws, ServerMsg(type=ServerMsgType.ASR_FINAL, text=text))
+    asr_ms = (time.perf_counter() - pipeline_started) * 1000
 
     if session.is_interrupted():
         await _send(ws, ServerMsg(type=ServerMsgType.INTERRUPTED))
@@ -424,6 +479,7 @@ async def _run_speech_pipeline(session: InterviewSession, audio_buffer: list[byt
         return
 
     result = interview_task.result()
+    interview_ms = (time.perf_counter() - pipeline_started) * 1000 - asr_ms
     if result is None:
         # 超时或内部打断：明确告知，避免用户以为面试“停了”
         await _send(ws, ServerMsg(
@@ -437,8 +493,20 @@ async def _run_speech_pipeline(session: InterviewSession, audio_buffer: list[byt
     question = result.get("question") or ""
     is_complete = result.get("is_complete", False)
 
+    tts_metrics: dict[str, float] = {}
     if question:
-        await _tts_and_send(session, question)
+        tts_metrics = await _tts_and_send(session, question)
+
+    total_ms = (time.perf_counter() - pipeline_started) * 1000
+    logger.info(
+        "[WS][latency] asr_ms=%.1f interview_ms=%.1f tts_first_audio_ms=%.1f "
+        "tts_total_ms=%.1f total_ms=%.1f",
+        asr_ms,
+        interview_ms,
+        tts_metrics.get("first_audio_ms", 0.0),
+        tts_metrics.get("total_ms", 0.0),
+        total_ms,
+    )
 
     if is_complete:
         report = result.get("report", {})
@@ -554,10 +622,12 @@ def _split_sentences(text: str) -> list[str]:
     return refined or [text]
 
 
-async def _tts_and_send(session: InterviewSession, text: str) -> None:
-    """TTS 流式合成并推送音频帧（按句切分，首句先出声；使用会话音色/语速/风格）。"""
+async def _tts_and_send(session: InterviewSession, text: str) -> dict[str, float]:
+    """TTS 流式合成并返回首音频与总耗时指标。"""
     ws = session.ws
     session.tts_playing = True
+    started = time.perf_counter()
+    first_audio_ms: float | None = None
 
     try:
         await _send(ws, ServerMsg(type=ServerMsgType.LLM_TOKEN, content=text))
@@ -566,7 +636,7 @@ async def _tts_and_send(session: InterviewSession, text: str) -> None:
         for sentence in _split_sentences(text):
             if session.is_interrupted():
                 await _send(ws, ServerMsg(type=ServerMsgType.INTERRUPTED))
-                return
+                return _tts_metrics(started, first_audio_ms)
             async for pcm_chunk in _tts.synthesize_stream(
                 sentence,
                 style=session.tts_style or None,
@@ -575,14 +645,25 @@ async def _tts_and_send(session: InterviewSession, text: str) -> None:
             ):
                 if session.is_interrupted():
                     await _send(ws, ServerMsg(type=ServerMsgType.INTERRUPTED))
-                    return
+                    return _tts_metrics(started, first_audio_ms)
                 await ws.send_bytes(pcm_chunk)
+                if first_audio_ms is None:
+                    first_audio_ms = (time.perf_counter() - started) * 1000
 
         await _send(ws, ServerMsg(type=ServerMsgType.TTS_END))
+        return _tts_metrics(started, first_audio_ms)
     except Exception as e:
         logger.error(f"[TTS] send failed: {e}")
+        return _tts_metrics(started, first_audio_ms)
     finally:
         session.tts_playing = False
+
+
+def _tts_metrics(started: float, first_audio_ms: float | None) -> dict[str, float]:
+    return {
+        "first_audio_ms": round(first_audio_ms or 0.0, 1),
+        "total_ms": round((time.perf_counter() - started) * 1000, 1),
+    }
 
 
 # ── 辅助 ──────────────────────────────────────────────────
@@ -635,9 +716,17 @@ async def start_interview_via_ws(
 class VoiceChatSession:
     """单次语音对话的 WebSocket 会话状态。"""
 
-    def __init__(self, ws: WebSocket, chat_session_id: str = ""):
+    def __init__(
+        self,
+        ws: WebSocket,
+        chat_session_id: str = "",
+        user_id: int | None = None,
+        source_session_id: str = "",
+    ):
         self.ws = ws
         self.chat_session_id = chat_session_id
+        self.user_id = user_id
+        self.source_session_id = source_session_id
         self.interrupt_event = asyncio.Event()
         self.tts_playing = False
 
@@ -654,7 +743,10 @@ class VoiceChatSession:
 async def websocket_voice_chat(ws: WebSocket) -> None:
     """WebSocket /ws/voice-chat 入口（简单语音对话模式）。"""
     await ws.accept()
-    session = VoiceChatSession(ws)
+    user = await _authenticate_ws(ws)
+    if user is None:
+        return
+    session = VoiceChatSession(ws, user_id=user["id"])
     queue: asyncio.Queue[ClientMsg | None] = asyncio.Queue()
 
     recv_task = asyncio.create_task(_vc_receiver(ws, queue, session))
@@ -776,6 +868,8 @@ async def _vc_handle_start(session: VoiceChatSession, msg: ClientMsg) -> None:
             jd_analysis=msg.jd_analysis,
             profile=msg.profile,
             gap_analysis=None,
+            user_id=session.user_id,
+            source_session_id=msg.session_id,
         )
         session.chat_session_id = result["session_id"]
 

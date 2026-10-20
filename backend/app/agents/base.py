@@ -14,11 +14,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from abc import ABC, abstractmethod
 from typing import Any
 
 from app.llm import LLMProvider, Message, Response, Role, ToolCall, ToolDefinition
+from app.llm.json_extract import extract_json_object
 from app.llm.observability import start_llm_call
 from app.llm.retry import is_retryable_llm_error, with_retry
 from app.tools.base import Tool
@@ -326,48 +326,5 @@ class BaseAgent(ABC):
 
     @staticmethod
     def extract_json(text: str) -> dict | None:
-        """从 LLM 响应中提取 JSON 对象。
-
-        处理常见格式：
-        - 纯 JSON 字符串
-        - ```json ... ``` 包裹的 JSON
-        - 文本中嵌入的 JSON
-        """
-        # 尝试直接解析
-        try:
-            return json.loads(text)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-        # 尝试提取 ```json ... ``` 代码块
-        match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(1).strip())
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        # 使用括号匹配提取最外层 JSON 对象（支持任意深度嵌套）
-        def extract_balanced_json(s: str) -> str | None:
-            """提取最外层的 {...} 或 [...]"""
-            start = None
-            depth = 0
-            for i, c in enumerate(s):
-                if c in ('{', '['):
-                    if depth == 0:
-                        start = i
-                    depth += 1
-                elif c in ('}', ']'):
-                    depth -= 1
-                    if depth == 0 and start is not None:
-                        return s[start:i+1]
-            return None
-
-        json_str = extract_balanced_json(text)
-        if json_str:
-            try:
-                return json.loads(json_str)
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        return None
+        """从 LLM 响应中提取 JSON 对象。"""
+        return extract_json_object(text)

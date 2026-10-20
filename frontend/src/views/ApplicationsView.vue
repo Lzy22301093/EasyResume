@@ -306,7 +306,7 @@ onMounted(reload)
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
-.app-body { flex: 1; overflow-y: auto; padding: var(--space-8); }
+.app-body { flex: 1; padding: var(--space-8); }
 .app-panel {
   max-width: none;
   margin: 0;

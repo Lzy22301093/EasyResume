@@ -10,23 +10,49 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from typing import Any
 
 from app.llm.base import Message, Role
+from app.llm.structured import parse_structured_json
 from app.llm.openai_provider import OpenAIProvider
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 # 对话历史最大轮数
 MAX_HISTORY_TURNS = 20
+MAX_SESSION_AGE_SECONDS = 3600
+
+
+class FeedbackAssessment(BaseModel):
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    summary: str = ""
+
+
+class VoiceFeedbackReport(BaseModel):
+    overall_score: float = 0
+    overall_assessment: FeedbackAssessment = Field(default_factory=FeedbackAssessment)
+    dimension_scores: dict[str, float] = Field(default_factory=dict)
+    suggestions: list[str] = Field(default_factory=list)
 
 
 class VoiceChatSession:
     """单次语音对话的会话状态。"""
 
-    def __init__(self, session_id: str, system_prompt: str):
+    def __init__(
+        self,
+        session_id: str,
+        system_prompt: str,
+        user_id: int | None = None,
+        source_session_id: str = "",
+    ):
         self.session_id = session_id
+        self.user_id = user_id
+        self.source_session_id = source_session_id
+        self.created_at = time.monotonic()
         self.system_prompt = system_prompt
         self.history: list[dict[str, str]] = []  # [{role, content}, ...]
         self.turn_count = 0
@@ -64,11 +90,19 @@ class VoiceChatHandler:
         jd_analysis: dict[str, Any],
         profile: dict[str, Any],
         gap_analysis: dict[str, Any] | None = None,
+        user_id: int | None = None,
+        source_session_id: str = "",
     ) -> dict[str, Any]:
         """创建对话会话，返回 session_id 和开场白。"""
+        self.cleanup_expired()
         session_id = f"vc-{uuid.uuid4().hex[:12]}"
         system_prompt = self._build_system_prompt(jd_analysis, profile, gap_analysis)
-        session = VoiceChatSession(session_id, system_prompt)
+        session = VoiceChatSession(
+            session_id,
+            system_prompt,
+            user_id=user_id,
+            source_session_id=source_session_id,
+        )
         self._sessions[session_id] = session
 
         greeting = self._build_greeting(jd_analysis, profile)
@@ -111,10 +145,30 @@ class VoiceChatHandler:
 
         session.add_assistant_message(full_response)
 
-    async def get_feedback(self, session_id: str) -> dict[str, Any]:
-        """对话结束后生成反馈报告。"""
+    def cleanup_expired(self) -> None:
+        """清理超时语音会话，避免进程内字典无限增长。"""
+        now = time.monotonic()
+        expired = [
+            key for key, session in self._sessions.items()
+            if now - session.created_at > MAX_SESSION_AGE_SECONDS
+        ]
+        for key in expired:
+            self._sessions.pop(key, None)
+
+    async def get_feedback(
+        self,
+        session_id: str,
+        user_id: int | None = None,
+        source_session_id: str = "",
+    ) -> dict[str, Any]:
+        """生成反馈报告，同时校验用户与主会话归属。"""
+        self.cleanup_expired()
         session = self._sessions.get(session_id)
-        if not session:
+        if (
+            not session
+            or session.user_id != user_id
+            or (source_session_id and session.source_session_id != source_session_id)
+        ):
             raise ValueError(f"Session not found: {session_id}")
 
         # 构造反馈生成 prompt
@@ -157,9 +211,9 @@ class VoiceChatHandler:
                 max_tokens=2048,
                 json_mode=True,
             )
-            report = json.loads(response.content)
+            report = parse_structured_json(response.content, VoiceFeedbackReport)
             logger.info(f"[VoiceChat] feedback generated for {session_id}")
-            return report
+            return report.model_dump()
         except Exception as e:
             logger.error(f"[VoiceChat] feedback generation failed: {e}")
             return {

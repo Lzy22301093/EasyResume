@@ -5,6 +5,9 @@
       <el-button type="primary" size="small" @click="handleNewSession">
         <Plus :size="16" />新建会话
       </el-button>
+      <el-button size="small" text @click="showHistory = true">
+        <Clock :size="16" />历史
+      </el-button>
       <el-tag v-if="session.sessionId" type="info" size="small">
         {{ stageLabel }}
       </el-tag>
@@ -99,17 +102,21 @@
         发送
       </el-button>
     </div>
+
+    <HistoryDrawer v-model="showHistory" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted } from 'vue'
-import { Plus, Upload, MessageSquare } from 'lucide-vue-next'
+import { Clock, Plus, Upload, MessageSquare } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import { useSessionStore } from '../stores/session'
 import { sendMessageSSE, uploadFile } from '../api/sessions'
+import HistoryDrawer from './HistoryDrawer.vue'
 
 const session = useSessionStore()
+const showHistory = ref(false)
 
 // 页面加载时自动恢复上次的会话
 onMounted(async () => {

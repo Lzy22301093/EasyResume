@@ -21,12 +21,21 @@ DEFAULT_STATE = {
     "interview_mode": "mixed",
     "phase": "opening",
     "current_question": "",
+    "current_question_id": "",
+    "current_question_category": "",
+    "opening_text": "",
+    "interview_plan": [],
+    "current_plan_item": {},
+    "asked_question_ids": [],
+    "pending_topic_ids": [],
+    "covered_topic_ids": [],
     "current_answer": "",
     "turn_count": 0,
     "max_turns": 10,
     "conversation_history": [],
     "dimension_scores": {},
     "current_evaluation": {},
+    "evaluation_evidence": [],
     "strengths": [],
     "weaknesses": [],
     "next_action": "",
@@ -37,6 +46,7 @@ DEFAULT_STATE = {
     "completion_reason": "",
     "final_report": {},
     "referenced_questions": [],
+    "referenced_question_items": [],
 }
 
 
@@ -66,6 +76,7 @@ class InterviewHandler:
         jd_analysis: dict,
         profile: dict,
         referenced_questions: list[str] | None = None,
+        referenced_question_items: list[dict[str, Any]] | None = None,
         max_turns: int = 10,
         user_id: int | None = None,
         resume: dict | None = None,
@@ -87,6 +98,7 @@ class InterviewHandler:
             "use_profile_as_supplement": use_profile_as_supplement,
             "target_position": target_position,
             "referenced_questions": referenced_questions or [],
+            "referenced_question_items": referenced_question_items or [],
             "max_turns": max_turns,
             "user_id": user_id,
         }
@@ -97,10 +109,14 @@ class InterviewHandler:
         # 保存状态
         await self.session_service.create(result)
 
-        question = result.get("current_question", "请介绍一下你自己。")
+        opening = result.get("opening_text", "")
+        next_question = result.get("current_question", "请介绍一下你自己。")
+        question = f"{opening}\n\n{next_question}".strip() if opening else next_question
         return {
             "interview_id": interview_id,
             "question": question,
+            "opening": opening,
+            "next_question": next_question,
             "state": result,
         }
 

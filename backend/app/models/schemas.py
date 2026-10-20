@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -98,6 +98,39 @@ class ResumeContent(BaseModel):
     """Structured resume content."""
     sections: list[ResumeSection] = Field(default_factory=list)
     raw_text: str = Field(default="", description="Raw resume text")
+
+
+class TailoredResumeRequest(BaseModel):
+    """根据目标岗位 JD 调整已有简历，生成可确认的岗位定制稿。"""
+
+    source_resume: ResumeContent = Field(..., description="已有简历内容")
+    jd_analysis: JDAnalysis = Field(..., description="目标岗位分析")
+    gap_analysis: GapAnalysis | None = Field(default=None, description="可选匹配诊断")
+    mode: Literal["conservative", "focused", "one_page"] = Field(
+        default="focused",
+        description="conservative=保守润色 | focused=岗位重点优化 | one_page=一页精简",
+    )
+
+
+class TailoredSectionChange(BaseModel):
+    """岗位定制稿的单模块变化说明。"""
+
+    title: str = Field(..., description="模块标题")
+    action: Literal["kept", "rewritten", "compressed", "hidden"] = Field(
+        default="rewritten", description="kept=保留 | rewritten=改写 | compressed=压缩 | hidden=隐藏"
+    )
+    reason: str = Field(default="", description="变化原因")
+
+
+class TailoredResumeResult(BaseModel):
+    """岗位定制结果：新简历内容 + 模块变化说明。"""
+
+    content: ResumeContent
+    changes: list[TailoredSectionChange] = Field(default_factory=list)
+    fact_guard: str = Field(
+        default="仅基于原始简历已有事实调整表达、顺序与重点，未新增经历或数字。",
+        description="事实边界说明",
+    )
 
 
 # === Render Config ===
@@ -308,6 +341,119 @@ class ProfileFormOut(BaseModel):
     extra: list[ProfileExtraEntry] = Field(default_factory=list)
 
 
+# === 简历附件导入个人画像（抽取预览 + 用户确认后写入） ===
+
+class ResumeImportBasicField(BaseModel):
+    """从简历识别的一条基本信息。"""
+    key: str = Field(..., description="name|phone|email|location|gender|birthday|nationality|hometown")
+    value: str = ""
+    quote: str = Field(default="", description="简历原文摘录，供用户核对")
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
+class ResumeImportEducation(BaseModel):
+    """从简历识别的一条教育经历。"""
+    school: str = ""
+    degree: str = ""
+    major: str = ""
+    start: str = ""
+    end: str = ""
+    gpa: str = ""
+    courses: str = ""
+    quote: str = ""
+    confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+
+
+class ResumeImportExperience(BaseModel):
+    """从简历识别的一条实习/项目经历。"""
+    exp_type: str = Field(default="internship", description="internship | project")
+    company: str = Field(default="", description="公司名或项目名")
+    role: str = Field(default="", description="岗位/角色")
+    start: str = ""
+    end: str = ""
+    current: bool = False
+    tech_stack: str = ""
+    duty: str = ""
+    achievement: str = ""
+    quote: str = ""
+    confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+
+
+class ResumeImportSkill(BaseModel):
+    """从简历识别的一项技能。"""
+    name: str
+    level: str = ""
+    notes: str = ""
+    quote: str = ""
+    confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+
+
+class ResumeImportExtract(BaseModel):
+    """LLM 从简历抽取的结构化结果（仅预览，不落库）。"""
+    basic_fields: list[ResumeImportBasicField] = Field(default_factory=list)
+    summary: str = Field(default="", description="自我评价/个人简介")
+    summary_quote: str = ""
+    education: list[ResumeImportEducation] = Field(default_factory=list)
+    experiences: list[ResumeImportExperience] = Field(default_factory=list)
+    skills: list[ResumeImportSkill] = Field(default_factory=list)
+    awards: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list, description="识别风险提示")
+    confidence: float = Field(default=0.7, ge=0.0, le=1.0, description="整体抽取置信度")
+
+
+class ResumeImportPreviewOut(BaseModel):
+    """简历导入预览：抽取结果 + 现有画像对照，供用户确认。"""
+    filename: str = ""
+    text_length: int = 0
+    extract: ResumeImportExtract
+    existing_basic: dict[str, str] = Field(default_factory=dict, description="已有基本信息，便于对照是否覆盖")
+    existing_titles: list[str] = Field(default_factory=list, description="已有技能/经历标题，便于提示重复")
+
+
+class ResumeImportApplyRequest(BaseModel):
+    """用户确认后的导入写入请求（只写勾选项）。"""
+    source_filename: str | None = None
+    basic_fields: list[ResumeImportBasicField] = Field(default_factory=list)
+    summary: str = ""
+    summary_quote: str = ""
+    education: list[ResumeImportEducation] = Field(default_factory=list)
+    experiences: list[ResumeImportExperience] = Field(default_factory=list)
+    skills: list[ResumeImportSkill] = Field(default_factory=list)
+    awards: list[str] = Field(default_factory=list)
+
+
+class ResumeImportApplyResult(BaseModel):
+    """导入写入结果摘要。"""
+    written: dict[str, int] = Field(default_factory=dict, description="各分类写入条数")
+    skipped: int = 0
+    message: str = ""
+
+
+class ResumeImportFromLibraryRequest(BaseModel):
+    """以简历库已有文档为源做抽取预览（免重新上传）。"""
+    document_id: int
+    version_id: int | None = Field(default=None, description="指定版本；默认当前版本")
+
+
+class ProfileSyncToLibraryRequest(BaseModel):
+    """把已确认画像基本信息回写到简历库文档（生成新版本）。"""
+    document_id: int
+    fields: dict[str, str] = Field(
+        default_factory=dict,
+        description="要同步的字段，键取自 BASIC_INFO_FIELDS（name/phone/email/location/…）",
+    )
+    note: str = Field(default="", description="版本备注（可选，写入 content 顶部注释或忽略）")
+
+
+class ProfileSyncToLibraryResult(BaseModel):
+    """画像 → 简历库同步结果。"""
+    document_id: int
+    version_id: int
+    version: int
+    changed_fields: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
 # === 画像更新提案（阶段1 指令1-2） ===
 
 class ProfileUpdateProposalOut(BaseModel):
@@ -428,6 +574,12 @@ class SectionAdoptRequest(BaseModel):
     """采纳区域改写：以替换后的内容生成新版本。"""
     section_id: int = Field(..., description="被改写的区域 ID")
     rewrite: str = Field(..., min_length=1, description="采纳的改写文本")
+
+
+class SectionManualEditRequest(BaseModel):
+    """手动编辑区域内容并生成新版本（不走 AI）。"""
+    section_id: int = Field(..., description="被编辑的区域 ID")
+    content: str = Field(..., min_length=1, description="编辑后的区域正文")
 
 
 # === 岗位匹配任务（阶段2 指令2-4） ===

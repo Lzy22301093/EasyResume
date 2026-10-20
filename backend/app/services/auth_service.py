@@ -6,10 +6,13 @@ import hashlib
 import hmac
 import logging
 import os
+
+import bcrypt
 from datetime import datetime, timedelta
 from typing import Any
 
 import jwt
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import settings
@@ -42,19 +45,22 @@ class AuthService:
     def _get_db(self) -> DBSession:
         return self._db_factory()
 
-    # === 密码（PBKDF2-SHA256） ===
+    # === 密码（bcrypt；兼容验证历史 PBKDF2-SHA256） ===
 
     @staticmethod
     def hash_password(password: str) -> str:
-        """哈希密码（PBKDF2-SHA256）。"""
-        salt = os.urandom(32)
-        key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 100000)
-        return salt.hex() + ":" + key.hex()
+        """哈希密码（bcrypt）。"""
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """验证密码。"""
+        """验证密码；旧 PBKDF2 数据在登录成功后由调用方透明升级。"""
         try:
+            if hashed_password.startswith(("$2a$", "$2b$", "$2y$")):
+                return bcrypt.checkpw(
+                    plain_password.encode("utf-8"),
+                    hashed_password.encode("ascii"),
+                )
             salt_hex, key_hex = hashed_password.split(":")
             salt = bytes.fromhex(salt_hex)
             key = bytes.fromhex(key_hex)
@@ -110,6 +116,11 @@ class AuthService:
             db.refresh(user)
             logger.info(f"User registered: {username}")
             return self._user_to_dict(user)
+        except IntegrityError:
+            # 并发注册时预检查可能失效，由数据库唯一键兜底
+            db.rollback()
+            logger.info("Registration conflicted with an existing username/email")
+            return None
         except Exception as e:
             db.rollback()
             logger.error(f"Registration failed: {e}")
@@ -126,6 +137,11 @@ class AuthService:
                 return None
             if not user.is_active:
                 return None
+
+            # 旧 PBKDF2 哈希登录成功后升级为 bcrypt
+            if not user.hashed_password.startswith(("$2a$", "$2b$", "$2y$")):
+                user.hashed_password = self.hash_password(password)
+                db.commit()
 
             token = self.create_access_token({"sub": str(user.id), "username": user.username})
             logger.info(f"User logged in: {username}")

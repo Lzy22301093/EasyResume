@@ -7,14 +7,18 @@ import hashlib
 import json
 import logging
 import os
+from pathlib import Path
 import uuid
+import weakref
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Header
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header, Query
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
+from app.api.auth import require_auth
+from app.api.upload_utils import DOCUMENT_MIME_TYPES, DOCUMENT_SUFFIXES, save_upload_limited, validate_upload
 from app.config import settings
 from app.graph import get_graph
 from app.llm import create_llm_provider
@@ -42,8 +46,11 @@ _store: SessionStore | None = None
 # 同一会话的消息处理必须串行化，避免"读-改-写"竞态导致状态互相覆盖。
 # 不同会话互不影响，可并行处理。
 
-_session_locks: dict[str, asyncio.Lock] = {}
+_session_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 _locks_guard = asyncio.Lock()
+
+# 单个 JD/简历上传文件上限（与简历库导入保持一致）
+MAX_DOCUMENT_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
 async def _get_session_lock(session_id: str) -> asyncio.Lock:
@@ -285,35 +292,27 @@ async def _parse_uploaded_files(session: dict[str, Any]) -> tuple[str | None, st
 
 
 @router.post("/", response_model=SessionCreateResponse)
-async def create_session(authorization: str | None = Header(None)):
-    """创建新会话（可选绑定登录用户，用于跨会话记忆）。"""
+async def create_session(user: dict[str, Any] = Depends(require_auth)):
+    """创建当前用户的新会话。"""
     session_id = str(uuid.uuid4())
     store = await get_store()
     data = _new_session_data(session_id)
-    # 可选绑定用户：带有效 token 时关联 user_id，否则匿名会话（记忆降级跳过）
-    user_id = _resolve_user_id(authorization)
-    if user_id:
-        data["user_id"] = user_id
+    data["user_id"] = user["id"]
     await store.create(session_id, data)
-    logger.info(f"Created session: {session_id} (user_id={user_id})")
+    logger.info(f"Created session: {session_id} (user_id={user['id']})")
     return SessionCreateResponse(session_id=session_id)
 
 
-def _resolve_user_id(authorization: str | None) -> int | None:
-    """从 Authorization header 解析用户 ID（无效返回 None）。"""
-    if not authorization:
-        return None
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        return None
-    from app.services.auth_service import AuthService
-    payload = AuthService.decode_token(parts[1])
-    if not payload or not payload.get("sub"):
-        return None
-    try:
-        return int(payload["sub"])
-    except (TypeError, ValueError):
-        return None
+async def _get_owned_session(
+    store: SessionStore,
+    session_id: str,
+    user_id: int,
+) -> dict[str, Any]:
+    """读取并校验会话归属；无权访问统一返回 404，避免泄露会话是否存在。"""
+    session = await store.get(session_id)
+    if session is None or session.get("user_id") != user_id:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    return session
 
 
 class ExportRequest(BaseModel):
@@ -401,7 +400,11 @@ def _resume_to_markdown(session: dict[str, Any]) -> str:
 
 
 @router.get("/")
-async def list_sessions():
+async def list_sessions(
+    user: dict[str, Any] = Depends(require_auth),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
     """列出所有会话摘要（历史会话列表，按最近更新倒序）。
 
     会话 ID 索引由 SessionStore 维护（Redis set / 内存 keys），
@@ -413,7 +416,7 @@ async def list_sessions():
     summaries = []
     for sid in ids:
         s = await store.get(sid)
-        if s is None:
+        if s is None or s.get("user_id") != user["id"]:
             continue
         summaries.append({
             "session_id": sid,
@@ -423,26 +426,22 @@ async def list_sessions():
         })
 
     summaries.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
-    return summaries
+    return summaries[offset : offset + limit]
 
 
 @router.get("/{session_id}")
-async def get_session(session_id: str):
+async def get_session(session_id: str, user: dict[str, Any] = Depends(require_auth)):
     """获取会话详情。"""
     store = await get_store()
-    session = await store.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    session = await _get_owned_session(store, session_id, user["id"])
     return session
 
 
 @router.get("/{session_id}/status")
-async def get_session_status(session_id: str):
+async def get_session_status(session_id: str, user: dict[str, Any] = Depends(require_auth)):
     """获取会话状态摘要。"""
     store = await get_store()
-    session = await store.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    session = await _get_owned_session(store, session_id, user["id"])
     return {
         "session_id": session_id,
         "stage": session["stage"],
@@ -456,16 +455,14 @@ async def get_session_status(session_id: str):
 
 
 @router.get("/{session_id}/trace")
-async def get_session_trace(session_id: str):
+async def get_session_trace(session_id: str, user: dict[str, Any] = Depends(require_auth)):
     """会话 LLM 调用轨迹（C1 观测埋点）。
 
     返回最近 MAX_SESSION_RECORDS 条调用记录（agent/模型/延迟/token/重试/错误分类），
     用于事后排查耗时构成与成本，无需复跑请求。
     """
     store = await get_store()
-    session = await store.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    session = await _get_owned_session(store, session_id, user["id"])
     return {
         "session_id": session_id,
         "llm_calls": session.get("llm_calls") or [],
@@ -473,7 +470,7 @@ async def get_session_trace(session_id: str):
 
 
 @router.post("/{session_id}/messages")
-async def send_message(session_id: str, request: MessageRequest):
+async def send_message(session_id: str, request: MessageRequest, user: dict[str, Any] = Depends(require_auth)):
     """发送消息并触发 Graph 执行，通过 SSE 流式返回结果。"""
     store = await get_store()
 
@@ -481,9 +478,7 @@ async def send_message(session_id: str, request: MessageRequest):
     lock = await _get_session_lock(session_id)
     await lock.acquire()
     try:
-        session = await store.get(session_id)
-        if session is None:
-            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        session = await _get_owned_session(store, session_id, user["id"])
 
         # 记录用户消息
         session["messages"].append({
@@ -847,6 +842,7 @@ async def upload_file(
     session_id: str,
     file: UploadFile = File(...),
     doc_type: str | None = None,  # 可选参数：'jd' 或 'resume'
+    user: dict[str, Any] = Depends(require_auth),
 ):
     """上传文件（JD 或简历）。
 
@@ -854,20 +850,22 @@ async def upload_file(
         doc_type: 文档类型，'jd' 或 'resume'。如果不提供，系统会尝试从文件名推断。
     """
     store = await get_store()
-    session = await store.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    session = await _get_owned_session(store, session_id, user["id"])
 
+    file_ext = validate_upload(
+        file.filename,
+        file.content_type,
+        DOCUMENT_SUFFIXES,
+        DOCUMENT_MIME_TYPES,
+    )
     upload_dir = _ensure_upload_dir()
-
-    # 保存文件
-    file_ext = os.path.splitext(file.filename or "unknown")[1]
     saved_name = f"{session_id}_{uuid.uuid4().hex[:8]}{file_ext}"
     file_path = os.path.join(upload_dir, saved_name)
-
-    content = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(content)
+    file_size = await save_upload_limited(
+        file,
+        Path(file_path),
+        MAX_DOCUMENT_UPLOAD_BYTES,
+    )
 
     # 验证 doc_type 参数
     if doc_type and doc_type not in ("jd", "resume"):
@@ -878,11 +876,12 @@ async def upload_file(
         "filename": file.filename,
         "saved_name": saved_name,
         "file_path": file_path,
-        "file_type": file_ext.lstrip(".").lower(),
+        "file_type": file_ext.lstrip("."),
         "doc_type": doc_type,  # 用户指定的文档类型
-        "file_size": len(content),
+        "file_size": file_size,
         "uploaded_at": datetime.now().isoformat(),
     }
+
     session["uploaded_files"].append(file_info)
     session["updated_at"] = datetime.now().isoformat()
     await store.update(session_id, {
@@ -900,12 +899,10 @@ async def upload_file(
 
 
 @router.post("/{session_id}/export")
-async def export_resume(session_id: str, request: ExportRequest):
+async def export_resume(session_id: str, request: ExportRequest, user: dict[str, Any] = Depends(require_auth)):
     """导出简历（HTML / JSON / Markdown），直接返回文件下载。"""
     store = await get_store()
-    session = await store.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    session = await _get_owned_session(store, session_id, user["id"])
 
     content = session.get("resume_content")
     if not content:
@@ -945,15 +942,13 @@ async def export_resume(session_id: str, request: ExportRequest):
 
 
 @router.post("/{session_id}/voice-chat")
-async def start_voice_chat(session_id: str):
+async def start_voice_chat(session_id: str, user: dict[str, Any] = Depends(require_auth)):
     """启动 AI 模拟面试语音对话，返回 WebSocket URL。
 
     前端收到后连接 /ws/voice-chat 并发送 START 消息。
     """
     store = await get_store()
-    session = await store.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    session = await _get_owned_session(store, session_id, user["id"])
 
     jd_analysis = session.get("jd_analysis")
     if not jd_analysis:
@@ -966,14 +961,18 @@ async def start_voice_chat(session_id: str):
 
 
 @router.post("/{session_id}/voice-chat/feedback")
-async def voice_chat_feedback(session_id: str, chat_session_id: str):
+async def voice_chat_feedback(session_id: str, chat_session_id: str, user: dict[str, Any] = Depends(require_auth)):
     """获取语音对话的反馈报告。"""
     from app.voice.gateway import _chat_handler
     if _chat_handler is None:
         raise HTTPException(status_code=503, detail="语音对话服务未初始化")
 
     try:
-        report = await _chat_handler.get_feedback(chat_session_id)
+        report = await _chat_handler.get_feedback(
+            chat_session_id,
+            user_id=user["id"],
+            source_session_id=session_id,
+        )
         return report
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -983,7 +982,7 @@ async def voice_chat_feedback(session_id: str, chat_session_id: str):
 
 
 @router.delete("/{session_id}")
-async def delete_session(session_id: str):
+async def delete_session(session_id: str, user: dict[str, Any] = Depends(require_auth)):
     """删除会话。"""
     store = await get_store()
     deleted = await store.delete(session_id)

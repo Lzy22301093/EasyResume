@@ -15,6 +15,7 @@ from typing import Any
 # ── 客户端 → 服务端 ──────────────────────────────────────
 
 class ClientMsgType(str, Enum):
+    AUTH = "auth"           # 连接建立后的首条身份认证消息
     AUDIO = "audio"
     END_OF_SPEECH = "end_of_speech"
     INTERRUPT = "interrupt"
@@ -32,9 +33,12 @@ class ClientMsg:
     jd_analysis: dict[str, Any] = field(default_factory=dict)   # start: JD 分析结果
     profile: dict[str, Any] = field(default_factory=dict)       # start: 个人画像
     referenced_questions: list[str] = field(default_factory=list)  # start: 参考面试题
+    referenced_question_items: list[dict[str, Any]] = field(default_factory=list)  # start: 参考题目与答题要点
     max_turns: int = 10     # start: 最大轮数
     interview_id: str = ""  # resume: 恢复的面试 ID
-    user_id: int | None = None  # start: 用户 ID（报告归属）
+    session_id: str = ""    # start: 主会话 ID（语音反馈归属）
+    user_id: int | None = None  # 兼容旧客户端；服务端忽略并以认证结果为准
+    token: str = ""         # auth: JWT（只在消息体传输，不放 URL）
     voice: str = ""         # start: TTS 音色
     speed: float | None = None  # start: TTS 语速 0.7-1.6
     tts_style: str = ""     # start: professional | casual | concise
@@ -91,9 +95,12 @@ def parse_client_msg(raw: str) -> ClientMsg | None:
         jd_analysis=obj.get("jd_analysis", {}),
         profile=obj.get("profile", {}),
         referenced_questions=obj.get("referenced_questions", []),
+        referenced_question_items=obj.get("referenced_question_items", []),
         max_turns=obj.get("max_turns", 10),
         interview_id=obj.get("interview_id", "") or "",
+        session_id=obj.get("session_id", "") or "",
         user_id=obj.get("user_id"),
+        token=obj.get("token") or "",
         voice=obj.get("voice") or "",
         speed=obj.get("speed"),
         tts_style=obj.get("tts_style") or obj.get("style") or "",

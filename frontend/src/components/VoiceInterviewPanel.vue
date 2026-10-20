@@ -192,17 +192,29 @@ function endInterview() {
 }
 
 const resolvedPayload = computed<UseVoiceChatOptions['startPayload']>(() => {
-  if (props.startPayload) return props.startPayload
   const jd = (session.jdAnalysis as unknown as Record<string, unknown>) || {}
   const profile = (session.profile as unknown as Record<string, unknown>) || {}
   if (props.mode !== 'interview') {
-    return { jd_analysis: jd, profile }
+    return {
+      jd_analysis: jd,
+      profile,
+      session_id: session.sessionId,
+      ...props.startPayload,
+    }
   }
+  const questions = session.interviewQuestions || []
   return {
     jd_analysis: jd,
     profile,
-    referenced_questions: (session.interviewQuestions || []).map(q => q.question).slice(0, 20),
+    referenced_questions: questions.map(q => q.question).slice(0, 20),
+    referenced_question_items: questions.slice(0, 20).map(q => ({
+      question: q.question,
+      category: q.category,
+      difficulty: q.difficulty,
+      answer_points: q.answer_points,
+    })),
     max_turns: props.maxTurns,
+    ...props.startPayload,
   }
 })
 

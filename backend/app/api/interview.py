@@ -9,8 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_current_user, require_auth
+from app.api.auth import require_auth
+from app.llm import create_llm_provider
 from app.models.database import get_db
+from app.models.schemas import JDAnalysis
+from app.services.jd_service import JDService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -31,12 +34,28 @@ def _get_handler():
     return _handler
 
 
+async def _get_owned_interview_state(
+    handler,
+    interview_id: str,
+    user_id: int,
+) -> dict[str, Any]:
+    """读取面试状态并校验归属，无权访问统一返回 404。"""
+    state = await handler.get_state(interview_id)
+    if not state or state.get("user_id") != user_id:
+        raise HTTPException(status_code=404, detail="Interview not found")
+    return state
+
+
 # === Request/Response Models ===
 
 class InterviewStartRequest(BaseModel):
     jd_analysis: dict[str, Any] = Field(..., description="JD 分析结果")
     profile: dict[str, Any] = Field(default_factory=dict, description="候选人画像（补充）")
     referenced_questions: list[str] = Field(default_factory=list, description="已参考的面试题")
+    referenced_question_items: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="已参考的结构化面试题（含 answer_points）",
+    )
     max_turns: int = Field(default=10, ge=3, le=30)
     resume: dict[str, Any] = Field(default_factory=dict, description="本场简历（主材料）")
     use_profile_as_supplement: bool = Field(default=True, description="是否用画像补充")
@@ -70,6 +89,39 @@ class InterviewStateResponse(BaseModel):
 
 # === Endpoints ===
 
+class JdAnalysisRequest(BaseModel):
+    """模拟面试准备阶段的 JD 分析请求。"""
+
+    jd_text: str = Field(..., min_length=1, max_length=20000, description="岗位 JD 文本")
+    job_title: str = Field(default="", max_length=120, description="用户填写的目标岗位")
+    company: str = Field(default="", max_length=120, description="用户填写的公司名称")
+
+
+@router.post("/jd-analysis", response_model=JDAnalysis)
+async def analyze_interview_jd(
+    req: JdAnalysisRequest,
+    user: dict = Depends(require_auth),
+):
+    """真实分析面试 JD，不再由前端拼装演示数据。"""
+    source_parts = []
+    if req.job_title.strip():
+        source_parts.append(f"目标岗位：{req.job_title.strip()}")
+    if req.company.strip():
+        source_parts.append(f"公司名称：{req.company.strip()}")
+    source_parts.append(f"职位描述：{req.jd_text.strip()}")
+    source_text = "\n".join(source_parts)
+
+    try:
+        service = JDService(llm=create_llm_provider())
+        return await service.analyze(source_text, strict=True)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logger.error(f"analyze_interview_jd failed: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail=f"JD 分析失败: {e}")
+
+
+
 @router.post("/start", response_model=InterviewStartResponse)
 async def start_interview(
     req: InterviewStartRequest,
@@ -82,8 +134,9 @@ async def start_interview(
             jd_analysis=req.jd_analysis,
             profile=req.profile,
             referenced_questions=req.referenced_questions,
+            referenced_question_items=req.referenced_question_items,
             max_turns=req.max_turns,
-            user_id=user.get("id"),
+            user_id=user["id"],
             resume=req.resume or None,
             use_profile_as_supplement=req.use_profile_as_supplement,
         )
@@ -104,6 +157,7 @@ async def submit_answer(
 ):
     """提交候选人回答，获取下一个问题或报告。"""
     handler = _get_handler()
+    await _get_owned_interview_state(handler, interview_id, user["id"])
     try:
         result = await handler.process_answer(
             interview_id=interview_id,
@@ -158,8 +212,48 @@ async def list_interview_history(
     except HTTPException:
         raise
     except Exception as e:
+        # 旧库缺 proposal_ids 等列时自动补齐再试一次
+        if "proposal_ids" in str(e) or "Unknown column" in str(e):
+            _ensure_interview_report_columns(db)
+            try:
+                rows = (
+                    db.query(InterviewReport)
+                    .filter(InterviewReport.user_id == user_id)
+                    .order_by(InterviewReport.created_at.desc())
+                    .limit(max(1, min(int(limit or 50), 100)))
+                    .all()
+                )
+                return [
+                    {
+                        "interview_id": r.interview_id,
+                        "target_position": r.target_position or "",
+                        "turn_count": r.turn_count or 0,
+                        "completion_reason": r.completion_reason or "",
+                        "created_at": r.created_at.isoformat() if r.created_at else None,
+                        "overall_score": _overall_from_report(r.final_report_json),
+                        "summary": _summary_from_report(r.final_report_json),
+                    }
+                    for r in rows
+                ]
+            except Exception as e2:
+                e = e2
         logger.error(f"list_interview_history failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"加载面试历史失败: {e}")
+
+
+def _ensure_interview_report_columns(db: Session) -> None:
+    """幂等补列，兼容旧 MySQL 库。"""
+    from sqlalchemy import inspect, text
+
+    try:
+        insp = inspect(db.get_bind())
+        cols = {c["name"] for c in insp.get_columns("interview_reports")}
+        if "proposal_ids" not in cols:
+            db.execute(text("ALTER TABLE interview_reports ADD COLUMN proposal_ids TEXT NULL"))
+            db.commit()
+            logger.info("[InterviewReport] auto-added column proposal_ids")
+    except Exception as e:
+        logger.warning(f"[InterviewReport] auto alter failed: {e}")
 
 
 @router.get("/history/{interview_id}")
@@ -323,9 +417,7 @@ async def get_interview_state(
 ):
     """获取面试当前状态。"""
     handler = _get_handler()
-    state = await handler.get_state(interview_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Interview not found")
+    state = await _get_owned_interview_state(handler, interview_id, user["id"])
     return InterviewStateResponse(
         interview_id=interview_id,
         is_active=state.get("is_active", False),
@@ -345,9 +437,7 @@ async def get_interview_report(
 ):
     """获取面试报告。"""
     handler = _get_handler()
-    state = await handler.get_state(interview_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Interview not found")
+    state = await _get_owned_interview_state(handler, interview_id, user["id"])
     if not state.get("is_complete"):
         raise HTTPException(status_code=400, detail="Interview not yet completed")
     return state.get("final_report", {})

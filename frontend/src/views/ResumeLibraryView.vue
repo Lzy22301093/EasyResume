@@ -1,17 +1,8 @@
 <template>
   <div class="page">
-    <AppNav>
-      <router-link to="/workspace" class="ghost-link">求职分析</router-link>
-    </AppNav>
+    <AppNav />
 
-    <div class="ws-tabs">
-      <button class="ws-tab" :class="{ active: tab === 'library' }" @click="tab = 'library'">简历库</button>
-      <button class="ws-tab" :class="{ active: tab === 'matching' }" @click="tab = 'matching'">匹配</button>
-    </div>
-
-    <MatchWorkspace v-if="tab === 'matching'" />
-
-    <div v-else class="layout">
+    <div class="layout">
       <!-- 左：文档列表 / 回收站 -->
       <aside class="doc-rail">
         <div class="rail-header">
@@ -125,15 +116,6 @@
               >
                 回滚到此版本
               </el-button>
-              <el-button
-                size="small"
-                :type="boxMode ? 'primary' : 'default'"
-                plain
-                @click="boxMode = !boxMode"
-              >
-                <SquareDashedMousePointer :size="13" style="margin-right: 4px" />
-                {{ boxMode ? '框选模式（开）' : '框选模式' }}
-              </el-button>
               <el-dropdown trigger="click" @command="onExportCommand">
                 <el-button size="small" plain :loading="exporting !== ''">
                   <Download :size="13" style="margin-right: 4px" />导出
@@ -157,15 +139,13 @@
                 文本重排
               </el-tag>
             </div>
-            <p v-if="boxMode" class="box-hint">在下方简历预览里拖拽框选区域 → 自动选中对应板块并记录选框；点选框右上角 × 可清除</p>
             <p v-if="exportError" class="export-err">{{ exportError }}</p>
           </div>
 
-          <div ref="previewRef" class="preview" @mousedown="onPreviewMouseDown" @mousemove="onPreviewMouseMove" @mouseup="onPreviewMouseUp">
+          <div class="preview">
             <div
               v-for="(sec, idx) in viewedSections"
               :key="sec.id"
-              :data-section-id="sec.id"
               class="section-card"
               :class="{ selected: sec.id === selectedSectionId }"
               :style="{ '--accent': sectionColor(idx) }"
@@ -173,51 +153,17 @@
             >
               <div class="section-head">
                 <span class="dot" :style="{ background: sectionColor(idx) }" />
-                <span class="section-title">{{ sec.title || '（无标题）' }}</span>
+                <div class="section-title-row">
+                  <span class="section-title">{{ sec.title || '（无标题）' }}</span>
+                  <el-button size="small" text type="primary" @click.stop="startManualEdit(sec)">
+                    <Pencil :size="12" style="margin-right: 3px" />编辑
+                  </el-button>
+                </div>
                 <el-tag size="small" type="info" disable-transitions>{{ typeLabel(sec.section_type) }}</el-tag>
                 <span class="section-page">P{{ sec.page_number }}</span>
               </div>
               <p class="section-content">{{ sec.content || '（空）' }}</p>
             </div>
-
-            <!-- 已保存选框覆盖层 -->
-            <div
-              v-for="sec in boxedSections"
-              :key="'box-' + sec.id"
-              class="box-overlay"
-              :style="{
-                left: sec.bounding_box!.x + 'px',
-                top: sec.bounding_box!.y + 'px',
-                width: sec.bounding_box!.width + 'px',
-                height: sec.bounding_box!.height + 'px',
-                borderColor: sectionColor(viewedSections.findIndex(s => s.id === sec.id)),
-              }"
-            >
-              <span class="box-label" :style="{ background: sectionColor(viewedSections.findIndex(s => s.id === sec.id)) }">
-                {{ sec.title || '区域' }}
-              </span>
-              <button
-                type="button"
-                class="box-clear"
-                title="清除选框"
-                aria-label="清除选框"
-                @click.stop="onClearBox(sec)"
-              >
-                <X :size="12" />
-              </button>
-            </div>
-
-            <!-- 拖拽选框 -->
-            <div
-              v-if="dragRect"
-              class="drag-rect"
-              :style="{
-                left: dragRect.x + 'px',
-                top: dragRect.y + 'px',
-                width: dragRect.width + 'px',
-                height: dragRect.height + 'px',
-              }"
-            />
           </div>
         </template>
         <div v-else-if="!railLoading" class="preview-empty">
@@ -274,7 +220,17 @@
     </div>
 
     <!-- 改写对比弹窗 -->
-    <RewriteCompareDialog
+        <!-- 手动编辑区域：保存为新版本 -->
+    <el-dialog v-model="manualEditOpen" title="手动编辑区域" width="640px" :append-to-body="true">
+      <p class="manual-edit-hint">保存后会生成新版本，旧版本可回滚。适合改电话、错字等不必走 AI 的修改。</p>
+      <el-input v-model="manualEditContent" type="textarea" :rows="12" placeholder="区域正文" />
+      <template #footer>
+        <el-button @click="manualEditOpen = false">取消</el-button>
+        <el-button type="primary" :loading="manualEditSaving" @click="saveManualEdit">保存为新版本</el-button>
+      </template>
+    </el-dialog>
+
+<RewriteCompareDialog
       :visible="compareVisible"
       :result="rewriteResult"
       :section="selectedSection"
@@ -308,7 +264,6 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import AppNav from '../components/AppNav.vue'
 import SkeletonLoader from '../components/SkeletonLoader.vue'
 import RewriteCompareDialog from '../components/resume/RewriteCompareDialog.vue'
-import MatchWorkspace from '../components/matching/MatchWorkspace.vue'
 import {
   deleteResumeDoc,
   getResumeDoc,
@@ -317,10 +272,10 @@ import {
   listResumeDocs,
   restoreResumeDoc,
   rewriteSection,
+  manualEditSection,
   rollbackResumeVersion,
   setVersionPagePreference,
   updateResumeDoc,
-  updateResumeSection,
   hasLayoutSource,
   exportResumeLayout,
 } from '../api/resumeLibrary'
@@ -340,11 +295,9 @@ import {
   Library,
   MessagesSquare,
   Pencil,
-  SquareDashedMousePointer,
   Trash2,
   Upload,
   Wand2,
-  X,
   Download,
 } from 'lucide-vue-next'
 
@@ -374,7 +327,6 @@ async function onUploadFile(ev: Event) {
   }
 }
 
-const tab = ref<'library' | 'matching'>('library')
 const SECTION_TYPE_LABELS: Record<string, string> = {
   header: '基本信息',
   summary: '自我评价',
@@ -393,7 +345,7 @@ const STAGE_LABELS: Record<string, string> = {
   has_jd_and_resume: 'JD + 简历',
   completed: '已完成',
 }
-const suggestions = ['表达更精炼有力', '补充量化成果', '突出技术深度', '更贴合目标岗位']
+const suggestions = ['表达更精炼有力', '补充量化成果', '突出技术深度']
 
 const docs = ref<ResumeLibraryDoc[]>([])
 const deletedDocs = ref<ResumeLibraryDoc[]>([])
@@ -416,11 +368,7 @@ const sessionsLoading = ref(false)
 const importableSessions = ref<SessionListItem[]>([])
 const importingId = ref('')
 
-const boxMode = ref(false)
-const previewRef = ref<HTMLElement | null>(null)
 const chatListRef = ref<HTMLElement | null>(null)
-const dragRect = ref<{ x: number; y: number; width: number; height: number } | null>(null)
-let dragStart: { x: number; y: number } | null = null
 
 const versions = computed<ResumeLibraryVersion[]>(() => currentDoc.value?.versions ?? [])
 const viewedVersion = computed<ResumeLibraryVersion | null>(
@@ -443,7 +391,6 @@ const selectedSection = computed<ResumeLibrarySection | null>(
   () => viewedSections.value.find((s) => s.id === selectedSectionId.value) ?? null
 )
 const selectedIndex = computed(() => viewedSections.value.findIndex((s) => s.id === selectedSectionId.value))
-const boxedSections = computed(() => viewedSections.value.filter((s) => s.bounding_box))
 const history = computed(() => (selectedSectionId.value ? histories[selectedSectionId.value] ?? [] : []))
 
 function sectionColor(idx: number) {
@@ -690,85 +637,6 @@ function extractError(err: unknown, fallback: string): string {
   return fallback
 }
 
-// ---- 框选模式：拖拽画框 → 命中区域卡片 → 记录 bounding_box ----
-
-function previewPoint(e: MouseEvent) {
-  const rect = previewRef.value!.getBoundingClientRect()
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top }
-}
-
-function onPreviewMouseDown(e: MouseEvent) {
-  if (!boxMode.value || !previewRef.value) return
-  e.preventDefault()
-  const p = previewPoint(e)
-  dragStart = p
-  dragRect.value = { x: p.x, y: p.y, width: 0, height: 0 }
-}
-
-function onPreviewMouseMove(e: MouseEvent) {
-  if (!boxMode.value || !dragStart || !dragRect.value) return
-  const p = previewPoint(e)
-  dragRect.value = {
-    x: Math.min(dragStart.x, p.x),
-    y: Math.min(dragStart.y, p.y),
-    width: Math.abs(p.x - dragStart.x),
-    height: Math.abs(p.y - dragStart.y),
-  }
-}
-
-async function onPreviewMouseUp() {
-  if (!boxMode.value || !dragStart || !dragRect.value || !previewRef.value) {
-    dragStart = null
-    dragRect.value = null
-    return
-  }
-  const rect = dragRect.value
-  dragStart = null
-  dragRect.value = null
-  if (rect.width < 8 || rect.height < 8) return
-
-  // 命中测试：与拖拽框重叠面积最大的区域卡片
-  let best: { id: number; el: HTMLElement; overlap: number } | null = null
-  previewRef.value.querySelectorAll<HTMLElement>('[data-section-id]').forEach((el) => {
-    const r = el.getBoundingClientRect()
-    const base = previewRef.value!.getBoundingClientRect()
-    const box = { x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height }
-    const overlapX = Math.max(0, Math.min(rect.x + rect.width, box.x + box.w) - Math.max(rect.x, box.x))
-    const overlapY = Math.max(0, Math.min(rect.y + rect.height, box.y + box.h) - Math.max(rect.y, box.y))
-    const overlap = overlapX * overlapY
-    if (overlap > 0 && (!best || overlap > best.overlap)) best = { id: Number(el.dataset.sectionId), el, overlap }
-  })
-  if (!best) {
-    ElMessage.warning('框选范围内没有区域，请框住某个板块')
-    return
-  }
-  const target = viewedSections.value.find((s) => s.id === (best as { id: number }).id)
-  if (!target) return
-  try {
-    await updateResumeSection(target.id, {
-      bounding_box: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height), page: 1 },
-    } as Partial<ResumeLibrarySection>)
-    ElMessage.success(`已为「${target.title || '区域'}」记录选框`)
-    await refreshCurrent()
-    selectSection(target)
-  } catch (err: unknown) {
-    ElMessage.error(extractError(err, '记录选框失败'))
-  }
-}
-
-/** 清除某区域已保存的选框（bounding_box=null） */
-async function onClearBox(sec: ResumeLibrarySection) {
-  try {
-    await updateResumeSection(sec.id, {
-      bounding_box: null,
-    } as unknown as Partial<ResumeLibrarySection>)
-    await refreshCurrent()
-    ElMessage.success(`已清除「${sec.title || '区域'}」的选框`)
-  } catch (err: unknown) {
-    ElMessage.error(extractError(err, '清除选框失败'))
-  }
-}
-
 // ---- 导出当前预览版本 ----
 const exporting = ref<'' | ExportFormat | 'print' | 'layout'>('')
 const exportError = ref('')
@@ -894,6 +762,45 @@ onMounted(() => {
 })
 
 defineExpose({ openImportDialog })
+
+// ---- 手动编辑区域（生成新版本，可回滚） ----
+const manualEditOpen = ref(false)
+const manualEditContent = ref('')
+const manualEditSaving = ref(false)
+const manualEditSectionId = ref<number | null>(null)
+
+function startManualEdit(sec: { id: number; content?: string | null }) {
+  if (!viewedVersion.value) {
+    ElMessage.warning('请先选择版本')
+    return
+  }
+  manualEditSectionId.value = sec.id
+  manualEditContent.value = sec.content || ''
+  manualEditOpen.value = true
+}
+
+async function saveManualEdit() {
+  const ver = viewedVersion.value
+  const sid = manualEditSectionId.value
+  if (!ver || !sid) return
+  const text = manualEditContent.value
+  if (!text.trim()) {
+    ElMessage.warning('内容不能为空')
+    return
+  }
+  manualEditSaving.value = true
+  try {
+    const version = await manualEditSection(ver.id, sid, text)
+    manualEditOpen.value = false
+    if (currentDoc.value) await selectDoc(currentDoc.value.id)
+    const versionNumber = (version as { version?: number })?.version
+    ElMessage.success(`已保存为新版本 v${versionNumber}，旧版可回滚`)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '保存失败')
+  } finally {
+    manualEditSaving.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -901,42 +808,6 @@ defineExpose({ openImportDialog })
   height: 100%;
   display: flex;
   flex-direction: column;
-}
-.ws-tabs {
-  display: flex;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-6);
-  background: var(--color-bg);
-  border-bottom: var(--border-light);
-}
-.ws-tab {
-  padding: 6px 18px;
-  border: var(--border-light);
-  border-radius: var(--radius-full);
-  background: var(--color-bg);
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-}
-.ws-tab:hover {
-  color: var(--color-text-primary);
-}
-.ws-tab.active {
-  background: var(--el-color-primary);
-  border-color: var(--el-color-primary);
-  color: #fff;
-  font-weight: var(--weight-medium);
-}
-.ghost-link {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  text-decoration: none;
-  padding: 6px 10px;
-  border-radius: 6px;
-}
-.ghost-link:hover {
-  color: var(--color-text-primary);
-  background: var(--color-gray-50, #f9fafb);
 }
 .layout {
   flex: 1;
@@ -1081,11 +952,6 @@ defineExpose({ openImportDialog })
 .version-chip {
   cursor: pointer;
 }
-.box-hint {
-  margin: var(--space-2) 0 0;
-  font-size: var(--text-sm);
-  color: var(--el-color-primary);
-}
 .preview {
   position: relative;
   flex: 1;
@@ -1125,6 +991,17 @@ defineExpose({ openImportDialog })
   border-radius: var(--radius-full);
   flex-shrink: 0;
 }
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.manual-edit-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
 .section-title {
   font-weight: var(--weight-semibold);
   font-size: var(--text-sm);
@@ -1142,54 +1019,10 @@ defineExpose({ openImportDialog })
   white-space: pre-wrap;
   word-break: break-word;
 }
-.box-overlay {
-  position: absolute;
-  border: 2px dashed;
-  border-radius: var(--radius-sm);
-  pointer-events: none;
-}
-.box-label {
-  position: absolute;
-  top: -10px;
-  left: 8px;
-  color: #fff;
-  font-size: var(--text-2xs, 11px);
-  padding: 0 6px;
-  border-radius: var(--radius-full);
-  line-height: 18px;
-}
-.box-clear {
-  pointer-events: auto;
-  position: absolute;
-  top: -10px;
-  right: -10px;
-  width: 20px;
-  height: 20px;
-  border: none;
-  border-radius: 50%;
-  background: var(--color-bg-elevated, #fff);
-  color: var(--color-text-secondary);
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.12));
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-}
-.box-clear:hover {
-  color: var(--color-danger-600, #b91c1c);
-  background: var(--color-danger-50, #fef2f2);
-}
 .export-err {
   margin: 4px 0 0;
   font-size: var(--text-xs);
   color: var(--color-danger-600, #b91c1c);
-}
-.drag-rect {
-  position: absolute;
-  border: 2px dashed var(--color-accent-600, #2563eb);
-  background: rgba(37, 99, 235, 0.08);
-  pointer-events: none;
 }
 
 /* 右栏 */

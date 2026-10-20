@@ -42,6 +42,12 @@ def strip_markdown(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _looks_like_basic_info(body: str) -> bool:
+    sample = (body or "")[:400]
+    hits = sum(1 for k in ("姓名", "电话", "邮箱", "手机", "城市", "所在地") if k in sample)
+    return hits >= 2 or ("姓名" in sample and "@" in sample)
+
+
 def _normalized_sections(content: dict[str, Any]) -> list[dict[str, str]]:
     sections = content.get("sections") if isinstance(content, dict) else None
     if not isinstance(sections, list):
@@ -52,6 +58,9 @@ def _normalized_sections(content: dict[str, Any]) -> list[dict[str, str]]:
             continue
         title = strip_markdown(str(sec.get("title") or ""))
         body = strip_markdown(str(sec.get("content") or ""))
+        # 无标题/「正文」但内容像联系方式 → 导出时显示为「基本信息」
+        if title in ("正文", "") and _looks_like_basic_info(body):
+            title = "基本信息"
         if not title and not body:
             continue
         out.append({"title": title, "content": body})
@@ -296,7 +305,12 @@ def _remove_table_borders(table) -> None:
 
 
 def _parse_contact_fields(basic_lines: list[str]) -> list[tuple[str, str]]:
-    """从基本信息行解析 (标签, 值)，避免长串 contact 在 Word 里从中间断行。"""
+    """从基本信息行解析 (标签, 值)，避免长串 contact 在 Word 里从中间断行。
+
+    兼容两种写法：
+    - 旧：`联系方式：电话：138 · 邮箱：a@b.com`
+    - 新：`电话：138 · 邮箱：a@b.com`
+    """
     pairs: list[tuple[str, str]] = []
     for ln in basic_lines:
         ln = ln.strip()
@@ -304,24 +318,38 @@ def _parse_contact_fields(basic_lines: list[str]) -> list[tuple[str, str]]:
             continue
         if ln.startswith("联系方式："):
             rest = ln.split("：", 1)[-1]
-            for part in re.split(r"[·|｜]", rest):
-                part = part.strip()
-                if "：" in part:
-                    k, v = part.split("：", 1)
-                    pairs.append((k.strip(), v.strip()))
-                elif part:
-                    pairs.append(("", part))
-            continue
-        if "：" in ln:
-            k, v = ln.split("：", 1)
-            pairs.append((k.strip(), v.strip()))
+        elif "：" in ln and ("·" in ln or "|" in ln or "｜" in ln):
+            rest = ln
+        elif ln.startswith("联系方式"):
+            rest = ln.split("：", 1)[-1]
         else:
-            pairs.append(("", ln.strip()))
+            if "：" in ln:
+                k, v = ln.split("：", 1)
+                pairs.append((k.strip(), v.strip()))
+            elif ln:
+                pairs.append(("", ln.strip()))
+            continue
+        for part in re.split(r"[·|｜]", rest):
+            part = part.strip()
+            if "：" in part:
+                k, v = part.split("：", 1)
+                pairs.append((k.strip(), v.strip()))
+            elif part:
+                pairs.append(("", part))
     return [(k, v) for k, v in pairs if v]
 
 
 def _format_date_bit(bit: str) -> bool:
     return bool(re.search(r"\d{4}", bit)) and ("–" in bit or "-" in bit or "至今" in bit or "年" in bit)
+
+
+def _contact_display_pairs(basic_lines: list[str]) -> list[tuple[str, str]]:
+    """把「电话：138… / 邮箱：…」等解析为 (标签, 值)；失败则整行作一段。"""
+    pairs = _parse_contact_fields(basic_lines)
+    if pairs:
+        return pairs
+    joined = " ".join(basic_lines).strip()
+    return [("", joined)] if joined else []
 
 
 def build_docx(
@@ -368,7 +396,7 @@ def build_docx(
         if sec["title"] == "求职意向":
             objective = sec["content"].strip()
 
-    contact_pairs = _parse_contact_fields(basic_lines)
+    contact_pairs = _contact_display_pairs(basic_lines)
     ink = RGBColor(*_ACCENT_RGB)
     title_ink = RGBColor(*_ACCENT_TITLE_RGB)
     gray = RGBColor(*_GRAY_RGB)

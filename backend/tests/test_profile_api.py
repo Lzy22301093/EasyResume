@@ -89,3 +89,39 @@ async def test_direction_api_manual_crud(client: AsyncClient):
     deleted = await client.delete(f"/api/profile/directions/{item['id']}")
     assert deleted.status_code == 204
     assert (await client.get("/api/profile/directions")).json() == []
+
+
+async def test_resume_import_apply_writes_profile(client: AsyncClient, db_session: Session):
+    resp = await client.post("/api/profile/resume-import/apply", json={
+        "source_filename": "cv.pdf",
+        "basic_fields": [
+            {"key": "name", "value": "赵六", "quote": "赵六", "confidence": 0.9},
+        ],
+        "summary": "踏实靠谱",
+        "education": [
+            {"school": "复旦大学", "degree": "硕士", "major": "软件工程"},
+        ],
+        "skills": [{"name": "Go"}],
+        "awards": ["优秀毕业生"],
+    })
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["written"]["basic_info"] == 1
+    assert data["written"]["education"] == 1
+    assert data["written"]["skill"] == 1
+    assert "已导入" in data["message"]
+
+    items = (await client.get("/api/profile/items")).json()
+    titles = {i["title"] for i in items}
+    assert "姓名" in titles
+    assert "复旦大学" in titles
+    assert "Go" in titles
+    name = next(i for i in items if i["title"] == "姓名")
+    assert name["content"] == "赵六"
+    assert name["evidences"] and name["evidences"][0]["source_type"] == "resume"
+
+
+async def test_resume_import_apply_empty_payload(client: AsyncClient):
+    resp = await client.post("/api/profile/resume-import/apply", json={})
+    assert resp.status_code == 201
+    assert resp.json()["written"] == {}

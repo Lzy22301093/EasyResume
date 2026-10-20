@@ -103,9 +103,10 @@ def create_interview_agents(llm) -> dict[str, BaseAgent]:
     """
     from app.config import settings
 
-    fast_model = settings.fast_model or None
+    fast_model = settings.fast_model or settings.llm_model or None
 
     return {
         "evaluator": EvaluatorAgent(llm, model=fast_model),
-        "interviewer": InterviewerAgent(llm),
+        # 面试出题与评估统一走 flash（当前全量模型策略）
+        "interviewer": InterviewerAgent(llm, model=fast_model),
     }

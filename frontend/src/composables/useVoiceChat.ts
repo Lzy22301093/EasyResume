@@ -35,8 +35,9 @@ export interface UseVoiceChatOptions {
     jd_analysis: Record<string, unknown>
     profile: Record<string, unknown>
     referenced_questions?: string[]
+    referenced_question_items?: Array<Record<string, unknown>>
     max_turns?: number
-    user_id?: number | null
+    session_id?: string
     voice?: string
     speed?: number
     tts_style?: string
@@ -98,13 +99,6 @@ export function useVoiceChat(options: UseVoiceChatOptions) {
 
   // ── WebSocket ──────────────────────────────────────────
 
-  function wsUrlWithToken(url: string) {
-    const token = localStorage.getItem('token')
-    if (!token) return url
-    const sep = url.includes('?') ? '&' : '?'
-    return `${url}${sep}token=${encodeURIComponent(token)}`
-  }
-
   function connect() {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return
     manualClose = false
@@ -113,12 +107,21 @@ export function useVoiceChat(options: UseVoiceChatOptions) {
       state.stage = 'connecting'
     }
 
-    ws = new WebSocket(wsUrlWithToken(options.wsUrl))
+    ws = new WebSocket(options.wsUrl)
 
     ws.onopen = () => {
       state.connected = true
       state.errorMessage = ''
       reconnectAttempt = 0
+      const token = localStorage.getItem('token')
+      if (!token) {
+        state.errorMessage = '登录状态已失效，请重新登录'
+        manualClose = true
+        ws?.close()
+        return
+      }
+      // JWT 放在首条消息中认证，避免出现在 WebSocket URL/访问日志里
+      send({ type: 'auth', token })
       startPing()
 
       const resumeId = state.interviewId || options.interviewId || ''
@@ -366,6 +369,7 @@ export function useVoiceChat(options: UseVoiceChatOptions) {
 
   async function startRecording() {
     if (state.recording) return
+    state.errorMessage = ''
 
     try {
       // 恢复被浏览器挂起的 AudioContext（自动播放策略）
@@ -421,6 +425,8 @@ export function useVoiceChat(options: UseVoiceChatOptions) {
   }
 
   function endOfSpeech() {
+    // 新一轮回答：清掉上一轮错误提示，避免一直挂在界面底部
+    state.errorMessage = ''
     send({ type: 'end_of_speech' })
     state.stage = 'thinking'
   }
@@ -435,6 +441,7 @@ export function useVoiceChat(options: UseVoiceChatOptions) {
   }
 
   function sendText(text: string) {
+    state.errorMessage = ''
     send({ type: 'text', content: text })
     state.stage = 'thinking'
   }

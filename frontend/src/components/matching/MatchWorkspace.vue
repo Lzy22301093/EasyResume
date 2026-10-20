@@ -178,7 +178,7 @@
       </template>
     </section>
 
-    <!-- 新建匹配弹窗（对照参考图 02） -->
+    <!-- 新建匹配弹窗 -->
     <el-dialog v-model="createVisible" title="岗位匹配 · 新建" width="640px" :close-on-click-modal="false">
       <p class="empty-hint" style="margin-bottom: 16px">填写岗位信息，AI 将基于岗位 JD 与你的已确认画像做匹配分析</p>
       <el-form label-position="top">

@@ -26,6 +26,17 @@
           <el-button class="draft-btn" size="small" text type="primary" @click="onSaveDraft">
             <Save :size="13" style="margin-right: 3px" />暂存
           </el-button>
+          <el-dropdown class="draft-btn" @command="autoFillFromProfile">
+            <el-button size="small" type="primary" plain :loading="autoFillLoading">
+              <Sparkles :size="13" style="margin-right: 3px" />一键填入画像
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="fill">仅补空字段（推荐）</el-dropdown-item>
+                <el-dropdown-item command="overwrite">覆盖当前向导内容</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <el-button class="draft-btn" size="small" text @click="onExitToHome">
             返回主界面
           </el-button>
@@ -574,7 +585,7 @@ const router = useRouter()
 type StepDef = { key: string; no: string; short: string; title: string; desc: string; icon: any }
 
 const STEPS: StepDef[] = [
-  { key: 'basic', no: '01', short: '基本信息', title: '基本信息', desc: '填写联系方式，选择 1~3 个投递方向；也可从个人画像一键导入。', icon: User },
+  { key: 'basic', no: '01', short: '基本信息', title: '基本信息', desc: '填写联系方式与投递方向；顶部「一键填入画像」可整份自动带出，也可分模块导入。', icon: User },
   { key: 'education', no: '02', short: '教育经历', title: '教育经历', desc: '填写学校、学历、专业与起止时间；GPA、排名、课程可选。', icon: GraduationCap },
   { key: 'skills', no: '03', short: '专业技能', title: '专业技能', desc: '列出技能与熟练度；证书与荣誉写在下方可选区。', icon: Wrench },
   { key: 'internship', no: '04', short: '实习经历', title: '实习经历', desc: '写清公司、岗位、时间段、工作内容与可量化成果。', icon: Briefcase },
@@ -659,6 +670,7 @@ type ProfileImportSection = 'basic' | 'education' | 'skill' | 'internship' | 'pr
 type ProfileImportMode = 'fill' | 'overwrite'
 const profileExperiences = ref<ProfileImportExperience[]>([])
 const profileSource = ref<ProfileResumeSource | null>(null)
+const autoFillLoading = ref(false)
 const profileImportLoading = ref(false)
 const profileImportStatus = ref('')
 const expandedStar = reactive<Record<string, boolean>>({})
@@ -1063,6 +1075,102 @@ function goKnowledge() {
 async function importFromKnowledge() {
   await importProfileSection('basic', 'fill')
   await loadProfileDirections()
+}
+
+/**
+ * 一键从个人画像填入整份向导（基本信息/教育/技能/实习/项目/软性/方向）。
+ * fill：仅补空；overwrite：覆盖本模块。测试时可一次填完，免去逐步点导入。
+ */
+async function autoFillFromProfile(rawMode: string = 'fill') {
+  const mode: ProfileImportMode = rawMode === 'overwrite' ? 'overwrite' : 'fill'
+  autoFillLoading.value = true
+  try {
+    const source = await ensureProfileSource()
+    const counts = {
+      basic: Object.values(source.basic_info || {}).filter(Boolean).length,
+      education: source.educations.length,
+      skill: source.skills.length,
+      internship: source.internships.length,
+      project: source.projects.length,
+      soft: Object.values(source.soft_info || {}).filter((v) => (v || '').trim()).length,
+    }
+    const total = Object.values(counts).reduce((a, b) => a + b, 0)
+    if (!total) {
+      ElMessage.warning('个人画像中暂无可填入的内容，请先到「个人画像」完善')
+      return
+    }
+    const updated = source.profile_updated_at
+      ? new Date(source.profile_updated_at).toLocaleString('zh-CN')
+      : '未知时间'
+    await ElMessageBox.confirm(
+      `将填入：基本信息 ${counts.basic} · 教育 ${counts.education} · 技能 ${counts.skill} · 实习 ${counts.internship} · 项目 ${counts.project} · 软性 ${counts.soft}。\n` +
+        `${mode === 'overwrite' ? '将覆盖当前向导中已有内容。' : '仅补充空字段/空列表，不覆盖你已填的内容。'}\n画像更新时间：${updated}`,
+      '一键填入个人画像',
+      {
+        confirmButtonText: mode === 'overwrite' ? '确认覆盖并填入' : '一键填入',
+        cancelButtonText: '取消',
+        type: mode === 'overwrite' ? 'warning' : 'info',
+      },
+    )
+
+    // 基本信息
+    const keys = ['name', 'gender', 'phone', 'email', 'location', 'birthday'] as const
+    for (const key of keys) {
+      const value = source.basic_info[key] || ''
+      if (value && (mode === 'overwrite' || !basic[key])) basic[key] = value
+    }
+
+    // 教育
+    const edus = source.educations.map(educationFromProfile)
+    if (edus.length) {
+      if (mode === 'overwrite') wizard.educations.splice(0, wizard.educations.length, ...edus)
+      else fillList(wizard.educations as unknown as Record<string, any>[], edus as unknown as Record<string, any>[], emptyEducation)
+    }
+
+    // 技能
+    const skills = source.skills.map(skillFromProfile)
+    if (skills.length) {
+      if (mode === 'overwrite') wizard.skills.splice(0, wizard.skills.length, ...skills)
+      else fillSkills(wizard.skills, skills)
+    }
+
+    // 实习 / 项目
+    const internItems = source.internships.map(expFromProfile)
+    if (internItems.length) {
+      if (mode === 'overwrite') wizard.internships.splice(0, wizard.internships.length, ...internItems)
+      else fillList(wizard.internships as unknown as Record<string, any>[], internItems as unknown as Record<string, any>[], emptyExp)
+    }
+    const projItems = source.projects.map(expFromProfile)
+    if (projItems.length) {
+      if (mode === 'overwrite') wizard.projects.splice(0, wizard.projects.length, ...projItems)
+      else fillList(wizard.projects as unknown as Record<string, any>[], projItems as unknown as Record<string, any>[], emptyExp)
+    }
+
+    // 软性信息
+    const soft = source.soft_info || {}
+    for (const field of ['personality', 'vision', 'disinterested', 'self_eval'] as const) {
+      const value = (soft[field] || '').trim()
+      if (value && (mode === 'overwrite' || !(wizard.soft_info[field] || '').trim())) {
+        wizard.soft_info[field] = value
+      }
+    }
+    softSaved.value = false
+
+    // 投递方向
+    await loadProfileDirections()
+    if (!wizard.directions.length && dirsFromProfile.value.length) {
+      wizard.directions = dirsFromProfile.value.slice(0, 3)
+    }
+
+    profileImportStatus.value = `已一键填入画像内容 · ${updated}`
+    ElMessage.success(profileImportStatus.value)
+  } catch (e: any) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error(e?.response?.data?.detail || '一键填入失败')
+    }
+  } finally {
+    autoFillLoading.value = false
+  }
 }
 
 // ---- 软性信息 ----
@@ -1499,8 +1607,28 @@ onMounted(async () => {
         if (wizard.step === 8) rebuildModules()
       } else {
         await clearDraft()
-        await importProfileSection('basic', 'fill')
+        // 从头开始：优先一键填满画像，省去逐步导入
+        void autoFillFromProfile('fill')
       }
+    } else {
+      // 无草稿：画像有内容时提示一键填入
+      try {
+        const source = await ensureProfileSource()
+        const has =
+          Object.values(source.basic_info || {}).some(Boolean) ||
+          source.educations.length ||
+          source.skills.length ||
+          source.internships.length ||
+          source.projects.length
+        if (has) {
+          const go = await ElMessageBox.confirm(
+            '检测到个人画像已有内容，是否一键填入本向导？（仅补空字段，可在各步骤继续修改）',
+            '快速开始',
+            { confirmButtonText: '一键填入', cancelButtonText: '先手动填', type: 'info' },
+          ).then(() => true).catch(() => false)
+          if (go) await autoFillFromProfile('fill')
+        }
+      } catch { /* 静默 */ }
     }
   } catch { /* 静默 */ }
   try {
@@ -1571,8 +1699,9 @@ onMounted(async () => {
 .step-chip.active { background: var(--color-accent-600); border-color: var(--color-accent-600); color: #fff; }
 .step-chip.active .step-no { color: rgba(255,255,255,.8); }
 .step-chip.done { color: var(--color-accent-600); border-color: var(--color-accent-200); background: var(--color-accent-50); }
-.draft-btn { margin-left: auto; }
-.draft-btn + .draft-btn { margin-left: 0; }
+.draft-btn { margin-left: 0; }
+.step-nav > .draft-btn:first-of-type,
+.step-nav > .el-dropdown.draft-btn:first-of-type { margin-left: auto; }
 
 .gen-panel {
   background: var(--color-bg); border: 1px solid var(--border-light);

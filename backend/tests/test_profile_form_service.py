@@ -14,6 +14,7 @@ from app.models.schemas import (
     ProfileSocialEntry,
 )
 from app.services.profile_form_service import ProfileFormService
+from app.services.profile_resume_source_service import ProfileResumeSourceService
 from app.services.profile_service import ProfileService, ProfileServiceError
 
 
@@ -168,11 +169,114 @@ def test_structured_internship_and_project_round_trip(db_session: Session):
     assert [e.category for e in out.extra] == ["internship", "project"]
     internship = out.extra[0]
     project = out.extra[1]
+    assert internship.title == "某科技公司"
     assert internship.role == "后端实习生"
     assert internship.duty == "负责接口开发与性能优化"
+    assert project.title == "简历平台"
     assert project.role == "后端负责人"
     assert project.tech_stack == "Python/FastAPI"
 
     items = {i.title: i for i in ProfileService().list_items(db_session, 1, category="experience")}
     assert json.loads(items["某科技公司"].payload_json)["exp_type"] == "internship"
     assert json.loads(items["简历平台"].payload_json)["exp_type"] == "project"
+
+
+def test_form_snapshot_delete_is_persistent(db_session: Session):
+    """再次保存是完整快照，删除教育/奖项/社交/经历/技能/目标/软性后不能回显旧条目。"""
+    svc = ProfileFormService()
+    svc.save(
+        db_session,
+        1,
+        ProfileFormSave(
+            education=[
+                ProfileEducationEntry(school="学校一"),
+                ProfileEducationEntry(school="学校二"),
+            ],
+            awards="奖项一\n奖项二",
+            social=[
+                ProfileSocialEntry(platform="GitHub", account="one"),
+                ProfileSocialEntry(platform="QQ", account="two"),
+            ],
+            extra=[
+                ProfileExtraEntry(category="internship", title="公司一", role="实习生"),
+                ProfileExtraEntry(category="project", title="项目一", role="开发"),
+                ProfileExtraEntry(category="skill", title="Python", content=""),
+                ProfileExtraEntry(category="skill", title="Vue", content=""),
+                ProfileExtraEntry(category="target", title="后端工程师", content=""),
+                ProfileExtraEntry(category="soft", title="性格特点", content="沉稳"),
+                ProfileExtraEntry(category="soft", title="职业愿景", content="成为架构师"),
+            ],
+        ),
+    )
+    out = svc.save(
+        db_session,
+        1,
+        ProfileFormSave(
+            education=[ProfileEducationEntry(school="学校二")],
+            awards="",
+            social=[ProfileSocialEntry(platform="QQ", account="two")],
+            extra=[
+                ProfileExtraEntry(category="project", title="项目一", role="负责人"),
+                ProfileExtraEntry(category="skill", title="Python", content=""),
+                ProfileExtraEntry(category="soft", title="性格特点", content="沉稳可靠"),
+            ],
+        ),
+    )
+
+    assert [e.school for e in out.education] == ["学校二"]
+    assert out.awards == []
+    assert [(x.platform, x.account) for x in out.social] == [("QQ", "two")]
+    assert [(e.category, e.title, e.role) for e in out.extra if e.category in ("internship", "project")] == [
+        ("project", "项目一", "负责人")
+    ]
+    skill_titles = sorted(e.title for e in out.extra if e.category == "skill")
+    assert skill_titles == ["Python"]
+    assert all(e.category != "target" for e in out.extra)
+    soft = {e.title: e.content for e in out.extra if e.category == "soft"}
+    assert soft == {"性格特点": "沉稳可靠"}
+
+
+def test_invalid_extra_does_not_delete_existing_snapshot(db_session: Session):
+    """非法 extra 必须在清理旧快照前失败，不能造成数据丢失。"""
+    svc = ProfileFormService()
+    svc.save(
+        db_session,
+        1,
+        ProfileFormSave(education=[ProfileEducationEntry(school="保留学校")]),
+    )
+    with pytest.raises(ProfileServiceError):
+        svc.save(
+            db_session,
+            1,
+            ProfileFormSave(extra=[ProfileExtraEntry(category="bogus", title="x")]),
+        )
+    assert [e.school for e in svc.load(db_session, 1).education] == ["保留学校"]
+
+
+def test_form_experience_maps_to_resume_source_fields(db_session: Session):
+    """表单 title=公司/项目名、role=岗位/角色，映射后不得错位。"""
+    svc = ProfileFormService()
+    svc.save(
+        db_session,
+        1,
+        ProfileFormSave(
+            extra=[
+                ProfileExtraEntry(
+                    category="internship",
+                    title="某科技公司",
+                    role="后端实习生",
+                ),
+                ProfileExtraEntry(
+                    category="project",
+                    title="简历平台",
+                    role="后端负责人",
+                ),
+            ],
+        ),
+    )
+
+    source = ProfileResumeSourceService().load(db_session, 1)
+    assert source.internships[0].company == "某科技公司"
+    assert source.internships[0].title == "后端实习生"
+    assert source.projects[0].company == "简历平台"
+    assert source.projects[0].title == "后端负责人"

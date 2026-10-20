@@ -1,13 +1,6 @@
 <template>
   <div class="app-layout">
-    <AppNav>
-      <el-button text @click="showHistory = true">
-        <Clock :size="16" />历史
-      </el-button>
-      <el-button text @click="showSettings = true">
-        <Settings :size="16" />设置
-      </el-button>
-    </AppNav>
+    <AppNav />
     <div class="app-body">
       <aside class="app-sidebar">
         <ChatPanel />
@@ -16,23 +9,13 @@
         <ResultPanel />
       </main>
     </div>
-
-    <HistoryDrawer v-model="showHistory" />
-    <SettingsDrawer v-model="showSettings" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Clock, Settings } from 'lucide-vue-next'
 import AppNav from '../components/AppNav.vue'
 import ChatPanel from '../components/ChatPanel.vue'
 import ResultPanel from '../components/ResultPanel.vue'
-import HistoryDrawer from '../components/HistoryDrawer.vue'
-import SettingsDrawer from '../components/SettingsDrawer.vue'
-
-const showHistory = ref(false)
-const showSettings = ref(false)
 </script>
 
 <style scoped>

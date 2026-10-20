@@ -4,6 +4,9 @@ import type {
   ResumeDraftInfo,
   ResumeLibraryDoc,
   ResumePhotoInfo,
+  TailoredResumeMode,
+  TailoredResumeResult,
+  ResumeContent,
   WizardExperience,
   WizardGeneratePayload,
   WizardGenerateResult,
@@ -80,6 +83,27 @@ export async function fetchPhotoBlob(photoId: number): Promise<Blob> {
 export function generateResume(payload: WizardGeneratePayload) {
   // 生成含 LLM 润色（可能多次调用），放宽超时
   return client.post<WizardGenerateResult>('/resume-generation/generate', payload, { timeout: 300000 })
+}
+
+/** 岗位定制：已有简历 + JD 分析 → 待确认的新简历版本 */
+export function tailorResume(payload: {
+  source_resume: ResumeContent
+  jd_analysis: Record<string, unknown>
+  gap_analysis?: Record<string, unknown> | null
+  mode: TailoredResumeMode
+}) {
+  return client
+    .post<TailoredResumeResult>('/resume-generation/tailor', payload, { timeout: 300000 })
+    .then((r) => r.data)
+}
+
+/** 把当前分析产出的岗位定制稿保存为简历库新文档 */
+export function importGeneratedResume(payload: {
+  title: string
+  content: ResumeContent
+  page_preference?: 'one_page' | 'two_pages'
+}) {
+  return client.post<ResumeLibraryDoc>('/resumes/import-generated', payload).then((r) => r.data)
 }
 
 // 简历库导入：上传文件（PDF/DOCX/TXT/MD）

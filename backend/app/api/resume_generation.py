@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_auth
+from app.api.upload_utils import PHOTO_MIME_TYPES, PHOTO_SUFFIXES, read_upload_limited, validate_upload
 from app.api.resume_library import _serialize_document
 from app.models.database import get_db
 from app.models.schemas import (
@@ -26,6 +27,8 @@ from app.models.schemas import (
     ResumeExportRequest,
     StarRequest,
     StarResponse,
+    TailoredResumeRequest,
+    TailoredResumeResult,
     WizardGenerateRequest,
 )
 from app.services.resume_export_service import ResumeExportError, build_export
@@ -143,9 +146,8 @@ async def upload_photo(
     db: Session = Depends(get_db),
 ):
     """上传当前用户的简历证件照（覆盖旧照）。"""
-    content = await file.read()
-    if len(content) > MAX_PHOTO_BYTES:
-        raise HTTPException(status_code=422, detail="证件照不能超过 5MB")
+    validate_upload(file.filename, file.content_type, PHOTO_SUFFIXES, PHOTO_MIME_TYPES)
+    content = await read_upload_limited(file, MAX_PHOTO_BYTES)
     try:
         photo = service.upload_photo(db, user["id"], file.filename or "photo.jpg", content)
     except WizardError as e:
@@ -203,6 +205,29 @@ async def generate_resume(
         "content": content,
         "document": _serialize_document(doc, with_detail=True) if doc else None,
     }
+
+
+@router.post("/tailor", response_model=TailoredResumeResult)
+async def tailor_resume(
+    data: TailoredResumeRequest,
+    user: dict = Depends(require_auth),
+):
+    """根据目标岗位分析调整已有简历，返回待用户确认的岗位定制稿。"""
+    from app.services.resume_tailor_service import (
+        ResumeTailorService,
+        TailorError,
+        TailorGenerationError,
+    )
+
+    llm = _load_llm()
+    try:
+        return await ResumeTailorService().tailor_resume(data, llm)
+    except TailorGenerationError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except TailorError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"岗位定制失败: {e}")
 
 
 @router.post("/export")

@@ -4,7 +4,7 @@
     <div class="kb-titlebar">
       <div class="kb-titlebar-text">
         <div class="kb-title">个人画像</div>
-        <p class="kb-sub">基本信息、教育、实习/项目、技能与目标，沉淀为可复用的画像</p>
+        <p class="kb-sub">基本信息、教育、实习/项目、技能与目标；支持从已有简历导入，确认后写入</p>
       </div>
       <div class="kb-actions">
         <div class="seg" role="tablist" aria-label="个人画像视图">
@@ -19,6 +19,12 @@
             @click="viewMode = 'graph'"
           >节点图</button>
         </div>
+        <el-button @click="importOpen = true">
+          <FileUp :size="16" />从简历导入
+        </el-button>
+        <el-button @click="openSync">
+          <RefreshCw :size="16" />同步到简历库
+        </el-button>
         <el-button type="primary" @click="openWizard">
           <Plus :size="16" />完善画像
         </el-button>
@@ -146,15 +152,19 @@
             <p class="empty-sub">
               {{ emptyHint }}
             </p>
-            <el-button v-if="activeCategory === 'soft'" type="primary" @click="softDialogOpen = true">
+            <el-button type="primary" @click="importOpen = true">
+              <FileUp :size="14" style="margin-right: 4px" />已有简历，快速导入
+            </el-button>
+            <el-button v-if="activeCategory === 'soft'" type="primary" plain @click="softDialogOpen = true">
               编辑软性信息
             </el-button>
-            <el-button v-else-if="activeCategory === 'target'" type="primary" @click="dirDialogOpen = true">
+            <el-button v-else-if="activeCategory === 'target'" type="primary" plain @click="dirDialogOpen = true">
               AI 推荐方向
             </el-button>
             <el-button
               v-else-if="activeCategory && activeCategory !== 'basic_info' && activeCategory !== 'education'"
               type="primary"
+              plain
               @click="quickAddOpen = true"
             >添加一条</el-button>
             <el-button v-else type="primary" plain @click="openWizard">完善画像</el-button>
@@ -238,6 +248,39 @@
     <!-- 完善画像：分阶段结构化向导 -->
     <ProfileFormWizard v-model="wizardOpen" @saved="onWizardSaved" />
 
+    <!-- 从已有简历导入画像（抽取后需确认） -->
+    <ProfileResumeImportDialog v-model="importOpen" @imported="onImported" />
+
+    <!-- 画像 → 简历库：联系方式回写 -->
+    <el-dialog v-model="syncOpen" title="同步画像到简历库" width="520px" :append-to-body="true">
+      <p class="sync-hint">
+        将已确认的基本信息合并进所选简历文档，<b>生成新版本</b>（旧版可回滚，不会覆盖历史）。
+      </p>
+      <el-form label-width="88px" @submit.prevent>
+        <el-form-item label="目标文档">
+          <el-select v-model="syncDocId" placeholder="选择简历库文档" style="width: 100%" :loading="syncDocsLoading">
+            <el-option v-for="d in syncDocs" :key="d.id" :label="d.title" :value="d.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-for="f in syncFieldList" :key="f.key" :label="f.label">
+          <el-input v-model="syncFields[f.key]" :placeholder="f.placeholder" />
+        </el-form-item>
+      </el-form>
+      <el-alert
+        v-if="syncError"
+        type="error"
+        :title="syncError"
+        show-icon
+        :closable="false"
+      />
+      <template #footer>
+        <el-button @click="syncOpen = false">取消</el-button>
+        <el-button type="primary" :loading="syncing" :disabled="!syncDocId || !hasSyncFields" @click="doSync">
+          生成新版本
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 软性信息：AI 生成 + 保存到画像 -->
     <SoftInfoDialog v-model="softDialogOpen" @saved="onSoftSaved" />
 
@@ -248,16 +291,19 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Plus, Inbox, Sparkles, Compass } from 'lucide-vue-next'
+import { Plus, Inbox, Sparkles, Compass, FileUp, RefreshCw } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useKnowledgeBaseStore } from '../stores/knowledgeBase'
 import AppNav from '../components/AppNav.vue'
 import KnowledgeNodeGraph from '../components/KnowledgeNodeGraph.vue'
 import ProfileFormWizard from '../components/ProfileFormWizard.vue'
+import ProfileResumeImportDialog from '../components/ProfileResumeImportDialog.vue'
 import SoftInfoDialog from '../components/SoftInfoDialog.vue'
 import DirectionDialog from '../components/DirectionDialog.vue'
 import SkeletonLoader from '../components/SkeletonLoader.vue'
 import { getPhotoInfo } from '../api/resumeGeneration'
+import { listResumeDocs } from '../api/resumeLibrary'
+import { syncProfileToLibrary } from '../api/profile'
 import type { ProfileCategory, ProfileItem, ProfileStatus } from '../types'
 
 const store = useKnowledgeBaseStore()
@@ -268,9 +314,28 @@ const activeStatus = ref<ProfileStatus | ''>('')
 const selected = ref<ProfileItem | null>(null)
 const detailOpen = ref(false)
 const wizardOpen = ref(false)
+const importOpen = ref(false)
 const softDialogOpen = ref(false)
 const dirDialogOpen = ref(false)
 const avatarUrl = ref('')
+
+// 画像 → 简历库同步
+const syncOpen = ref(false)
+const syncing = ref(false)
+const syncDocsLoading = ref(false)
+const syncError = ref('')
+const syncDocId = ref<number | null>(null)
+const syncDocs = ref<{ id: number; title: string }[]>([])
+const syncFields = ref<Record<string, string>>({})
+const syncFieldList = [
+  { key: 'name', label: '姓名', placeholder: '如：张三' },
+  { key: 'phone', label: '手机', placeholder: '如：13800000000' },
+  { key: 'email', label: '邮箱', placeholder: '如：a@b.com' },
+  { key: 'location', label: '所在地', placeholder: '如：北京' },
+]
+const hasSyncFields = computed(() =>
+  syncFieldList.some((f) => (syncFields.value[f.key] || '').trim()),
+)
 
 // 详情编辑
 const editTitle = ref('')
@@ -312,12 +377,12 @@ const targetTags = computed(() =>
 )
 
 const emptyHint = computed(() => {
-  if (activeCategory.value === 'skill') return '添加你掌握的技能，简历生成与岗位匹配会自动复用'
+  if (activeCategory.value === 'skill') return '添加你掌握的技能，或从已有简历一键识别'
   if (activeCategory.value === 'target') return '手动添加目标岗位，或用 AI 基于画像推荐方向'
   if (activeCategory.value === 'soft') return '填写性格、愿景与自我评价，可 AI 辅助生成'
-  if (activeCategory.value === 'experience') return '补充项目/实习经历，便于包装简历'
+  if (activeCategory.value === 'experience') return '补充项目/实习经历，也可从已有简历导入'
   if (activeCategory.value === 'interview_feedback') return '记录面试反馈，反哺长期画像'
-  return '点击「完善画像」用分阶段表单填写，或在分类里添加条目'
+  return '已有简历可一键导入并核对确认；也可点「完善画像」手动填写'
 })
 
 watch(activeCategory, () => {
@@ -517,6 +582,63 @@ async function onWizardSaved() {
   await loadAvatar()
 }
 
+async function onImported() {
+  await refreshAll()
+}
+
+async function openSync() {
+  syncError.value = ''
+  syncOpen.value = true
+  syncDocsLoading.value = true
+  try {
+    syncDocs.value = await listResumeDocs()
+  } catch {
+    syncDocs.value = []
+  } finally {
+    syncDocsLoading.value = false
+  }
+  // 从已确认画像预填
+  try {
+    await store.fetchItems('basic_info', 'confirmed')
+    const map: Record<string, string> = {}
+    const titleToKey: Record<string, string> = {
+      姓名: 'name',
+      电话: 'phone',
+      手机: 'phone',
+      邮箱: 'email',
+      所在地: 'location',
+    }
+    for (const item of store.items) {
+      const key = titleToKey[item.title]
+      if (key && item.content) map[key] = item.content
+    }
+    syncFields.value = map
+  } catch {
+    syncFields.value = {}
+  }
+}
+
+async function doSync() {
+  if (!syncDocId.value) return
+  const fields: Record<string, string> = {}
+  for (const f of syncFieldList) {
+    const v = (syncFields.value[f.key] || '').trim()
+    if (v) fields[f.key] = v
+  }
+  syncing.value = true
+  syncError.value = ''
+  try {
+    const res = await syncProfileToLibrary({ document_id: syncDocId.value, fields })
+    ElMessage.success(res.data.message || '已同步到简历库')
+    syncOpen.value = false
+  } catch (err) {
+    const anyErr = err as { response?: { data?: { detail?: string } } }
+    syncError.value = anyErr?.response?.data?.detail || '同步失败，请稍后重试'
+  } finally {
+    syncing.value = false
+  }
+}
+
 async function onSoftSaved() {
   if (!activeCategory.value) activeCategory.value = 'soft'
   await refreshAll()
@@ -570,6 +692,15 @@ function sourceLabel(t: string) {
   flex-wrap: wrap;
   gap: var(--space-2);
   justify-content: flex-end;
+}
+.sync-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+.sync-hint b {
+  color: var(--color-accent-600, var(--color-primary));
 }
 .kb-title {
   font-family: var(--font-display);

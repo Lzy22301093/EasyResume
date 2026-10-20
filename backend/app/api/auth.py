@@ -21,7 +21,7 @@ auth_service = AuthService()
 
 class RegisterRequest(BaseModel):
     username: str
-    email: str
+    email: EmailStr
     password: str
 
 

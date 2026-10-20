@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { createSession as apiCreateSession, getSession, deleteSession as apiDeleteSession } from '../api/sessions'
+import { useAuthStore } from './auth'
 import type {
   SessionStage,
   JDAnalysis,
@@ -81,8 +82,11 @@ function normalizeResume(raw: unknown): ResumeContent | null {
   }
 }
 
-/** localStorage key for persisting the current session ID */
-const SESSION_ID_KEY = 'current_session_id'
+/** 按用户隔离的当前会话 ID，避免切换账号后误恢复他人会话 */
+function currentSessionStorageKey(): string {
+  const userId = useAuthStore().user?.id
+  return userId ? `current_session_id:${userId}` : 'current_session_id:anonymous'
+}
 
 /** 聊天消息（包含系统事件） */
 export interface ChatMessage {
@@ -164,7 +168,7 @@ export const useSessionStore = defineStore('session', () => {
     const res = await apiCreateSession()
     sessionId.value = res.data.session_id
     // 持久化 session ID，刷新后可恢复
-    localStorage.setItem(SESSION_ID_KEY, res.data.session_id)
+    localStorage.setItem(currentSessionStorageKey(), res.data.session_id)
     addMessage({
       role: 'system',
       content: '会话已创建，请输入目标岗位的 JD 或上传 JD 文件。',
@@ -196,14 +200,7 @@ export const useSessionStore = defineStore('session', () => {
     msgCounter = (d.messages || []).length
 
     // 持久化 session ID，刷新后可恢复
-    localStorage.setItem(SESSION_ID_KEY, id)
-
-    // 同时更新历史列表
-    const savedIds: string[] = JSON.parse(localStorage.getItem('session_ids') || '[]')
-    if (!savedIds.includes(id)) {
-      savedIds.unshift(id)
-      localStorage.setItem('session_ids', JSON.stringify(savedIds))
-    }
+    localStorage.setItem(currentSessionStorageKey(), id)
 
     autoSelectTab()
   }
@@ -436,7 +433,7 @@ export const useSessionStore = defineStore('session', () => {
       await apiDeleteSession(targetId)
       // 如果删除的是当前会话，清除 localStorage
       if (targetId === sessionId.value) {
-        localStorage.removeItem(SESSION_ID_KEY)
+        localStorage.removeItem(currentSessionStorageKey())
         sessionId.value = ''
         stage.value = 'init'
         messages.value = []
@@ -447,10 +444,6 @@ export const useSessionStore = defineStore('session', () => {
         interviewQuestions.value = []
         renderConfig.value = null
       }
-      // 从历史列表中移除
-      const savedIds: string[] = JSON.parse(localStorage.getItem('session_ids') || '[]')
-      const updated = savedIds.filter(i => i !== targetId)
-      localStorage.setItem('session_ids', JSON.stringify(updated))
     }
   }
 
@@ -459,7 +452,7 @@ export const useSessionStore = defineStore('session', () => {
    * 如果 localStorage 中有 session ID 且后端仍有该会话，则加载它。
    */
   async function restoreSession(): Promise<boolean> {
-    const savedId = localStorage.getItem(SESSION_ID_KEY)
+    const savedId = localStorage.getItem(currentSessionStorageKey())
     if (!savedId) return false
 
     try {
@@ -467,7 +460,7 @@ export const useSessionStore = defineStore('session', () => {
       return true
     } catch {
       // 会话已过期或不存在，清除无效 ID
-      localStorage.removeItem(SESSION_ID_KEY)
+      localStorage.removeItem(currentSessionStorageKey())
       return false
     }
   }

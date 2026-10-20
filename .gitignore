@@ -275,7 +275,9 @@ backend/exports/
 逆向工程/
 
 # 本地开发过程文档（保留本机，不入库）
+# 历史文件已迁入 docs/archive/，路径见 docs/archive/README.md
 /GOAL.md
+/HANDOFF.md
 /docs/handoff.md
 /docs/implementation-plan.md
 /docs/implementation-instructions.md
@@ -286,6 +288,39 @@ backend/exports/
 /docs/overnight-agent-playbook.md
 /docs/ai-mock-interview-review.md
 /docs/architecture-v3.md
-/HANDOFF.md
 /docs/HANDOFF-2026-08-12.md
 /docs/superpowers/
+/docs/task-*.md
+# archive 中的过程稿仍不入库；归档的设计史（DESIGN-draft1 / ai-mock-interview-design）可入库
+/docs/archive/GOAL.md
+/docs/archive/goal-log.md
+/docs/archive/implementation-instructions.md
+/docs/archive/phase1-acceptance.md
+/docs/archive/agent-upgrade-plan.md
+/docs/archive/refactor-plan.md
+/docs/archive/overnight-agent-playbook.md
+/docs/archive/ai-mock-interview-review.md
+/docs/archive/architecture-v3.md
+/docs/archive/task-*.md
+/docs/archive/superpowers/
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
+
+# ── 仓库对外文档策略 ──────────────────────────────────────────
+# 远程仅保留：README（介绍/功能）+ docs/DEPLOYMENT.md、frontend/README（使用）
+# 以下内部/过程/契约文档仅存本机，不入库（已在远程的会在提交中移除跟踪）
+AGENTS.md
+CLAUDE.md
+DESIGN.md
+/docs/DESIGN.md
+/docs/agents-contract.md
+/docs/resume-generation-contract.md
+/docs/structured-profile-form.md
+/docs/resume-profile-bridge.md
+/docs/archive/
+.claude/
+
+# 本地可视化校验与冒烟产物，不入库
+career-assistant.architecture*
+output/
+scripts/

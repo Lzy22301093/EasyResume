@@ -187,7 +187,7 @@
 
         <div v-if="hasReport" class="report-summary">
           <div class="score-badge">
-            <div class="score-num">{{ overallScore ?? '—' }}</div>
+            <div class="score-num">{{ overallScore ?? '—' }}<span class="score-max">/10</span></div>
             <div class="score-label">综合评分</div>
           </div>
           <div class="report-meta">
@@ -320,7 +320,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import AppNav from '../components/AppNav.vue'
 import VoiceInterviewPanel from '../components/VoiceInterviewPanel.vue'
 import { listProfileItems, listProposals, actOnProposal } from '../api/profile'
+import { useAuthStore } from '../stores/auth'
 import {
+  analyzeInterviewJd,
+  getInterviewReport,
   getInterviewState,
   listInterviewHistory,
   getInterviewHistoryDetail,
@@ -330,19 +333,23 @@ import {
 } from '../api/interview'
 import { listResumeDocs, getResumeDoc } from '../api/resumeLibrary'
 import { importUploadResume } from '../api/resumeGeneration'
-import { useAuthStore } from '../stores/auth'
 import type {
   ActiveVoiceInterviewStore,
   InterviewHistoryDetail,
   InterviewHistoryItem,
+  JDAnalysis,
   ProfileUpdateProposal,
   ResumeLibraryDoc,
 } from '../types'
 
 const router = useRouter()
-const auth = useAuthStore()
+const authStore = useAuthStore()
 
-const ACTIVE_KEY = 'mock_voice_interview_active'
+const ACTIVE_KEY_PREFIX = 'mock_voice_interview_active'
+function activeStorageKey(): string {
+  const userId = authStore.user?.id
+  return userId ? `${ACTIVE_KEY_PREFIX}:${userId}` : `${ACTIVE_KEY_PREFIX}:anonymous`
+}
 
 type Phase = 'prepare' | 'conduct' | 'report'
 const phase = ref<Phase>('prepare')
@@ -387,12 +394,14 @@ function loadTtsPref() {
   try {
     const raw = localStorage.getItem(TTS_PREF_KEY)
     if (!raw) return
-    const p = JSON.parse(raw) as { style?: string; speed?: number; voice?: string }
-    if (p.style) ttsStyle.value = p.style
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return
+    const p = parsed as { style?: unknown; speed?: unknown; voice?: unknown }
+    if (typeof p.style === 'string') ttsStyle.value = p.style
     if (typeof p.speed === 'number') ttsSpeed.value = p.speed
-    if (p.voice) ttsVoice.value = p.voice
+    if (typeof p.voice === 'string') ttsVoice.value = p.voice
   } catch {
-    /* ignore */
+    localStorage.removeItem(TTS_PREF_KEY)
   }
 }
 
@@ -447,10 +456,9 @@ const profile = ref<Record<string, unknown>>({})
 const profileBrief = ref('')
 
 const startPayload = ref<{
-  jd_analysis: Record<string, unknown>
+  jd_analysis: JDAnalysis
   profile: Record<string, unknown>
   max_turns: number
-  user_id?: number | null
   voice?: string
   speed?: number
   tts_style?: string
@@ -546,20 +554,13 @@ function statusType(s: string): 'success' | 'info' | 'warning' | 'danger' {
   return 'info'
 }
 
-function buildJdAnalysis() {
-  const title = position.value.trim()
-  const lines = jdText.value
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .slice(0, 20)
-  return {
-    job_title: title,
+async function analyzeJd(): Promise<JDAnalysis> {
+  const res = await analyzeInterviewJd({
+    jd_text: jdText.value.trim() || `目标岗位：${position.value.trim()}`,
+    job_title: position.value.trim(),
     company: company.value.trim(),
-    summary: jdText.value.trim().slice(0, 500) || title,
-    requirements: lines.map((content) => ({ content, importance: 'high' })),
-    nice_to_have: [],
-  }
+  })
+  return res.data
 }
 
 async function loadResumeDocs() {
@@ -686,11 +687,11 @@ async function beginInterview() {
   launching.value = true
   try {
     if (!Object.keys(profile.value).length) await loadProfile()
+    const analyzedJd = await analyzeJd()
     startPayload.value = {
-      jd_analysis: buildJdAnalysis(),
+      jd_analysis: analyzedJd,
       profile: useProfileSupplement.value ? profile.value : {},
       max_turns: maxTurns.value,
-      user_id: auth.user?.id ?? null,
       voice: ttsVoice.value,
       speed: ttsSpeed.value,
       tts_style: ttsStyle.value,
@@ -702,6 +703,9 @@ async function beginInterview() {
     // 稍等一拍，让按钮 loading 可见，再切到面试页
     await new Promise((r) => setTimeout(r, 120))
     phase.value = 'conduct'
+  } catch {
+    prepError.value = 'JD 分析失败，请检查岗位信息后重试'
+    ElMessage.error(prepError.value)
   } finally {
     preparing.value = false
   }
@@ -746,10 +750,14 @@ function onReport(r: Record<string, unknown>) {
 
 function loadActiveLocal(): ActiveVoiceInterviewStore | null {
   try {
-    const raw = localStorage.getItem(ACTIVE_KEY)
+    const raw = localStorage.getItem(activeStorageKey())
     if (!raw) return null
-    return JSON.parse(raw) as ActiveVoiceInterviewStore
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    const value = parsed as ActiveVoiceInterviewStore
+    return typeof value.interviewId === 'string' ? value : null
   } catch {
+    localStorage.removeItem(activeStorageKey())
     return null
   }
 }
@@ -762,14 +770,15 @@ function persistActiveLocal() {
     position: position.value,
     jdText: jdText.value,
     maxTurns: maxTurns.value,
+    jdAnalysis: startPayload.value?.jd_analysis,
     chatLog: voicePanelRef.value?.state.chatLog ? [...voicePanelRef.value.state.chatLog] : [],
     updatedAt: Date.now(),
   }
-  localStorage.setItem(ACTIVE_KEY, JSON.stringify(payload))
+  localStorage.setItem(activeStorageKey(), JSON.stringify(payload))
 }
 
 function clearActiveLocal() {
-  localStorage.removeItem(ACTIVE_KEY)
+  localStorage.removeItem(activeStorageKey())
   activeLocal.value = null
 }
 
@@ -797,11 +806,11 @@ async function resumeActive() {
     maxTurns.value = a.maxTurns || 8
     interviewId.value = a.interviewId
     await loadProfile()
+    const analyzedJd = a.jdAnalysis || (await analyzeJd())
     startPayload.value = {
-      jd_analysis: buildJdAnalysis(),
+      jd_analysis: analyzedJd,
       profile: useProfileSupplement.value ? profile.value : {},
       max_turns: maxTurns.value,
-      user_id: auth.user?.id ?? null,
       voice: ttsVoice.value,
       speed: ttsSpeed.value,
       tts_style: ttsStyle.value,
@@ -931,7 +940,6 @@ async function confirmEnd() {
   if (interviewId.value) {
     // 尽力拉取报告；WS done 可能尚未到达
     try {
-      const { getInterviewReport } = await import('../api/interview')
       const res = await getInterviewReport(interviewId.value)
       report.value = res.data || {}
     } catch {
@@ -1350,6 +1358,13 @@ onMounted(() => {
   font-size: var(--text-xl);
   font-weight: 700;
   color: var(--color-accent-600);
+}
+
+.score-max {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-left: 2px;
 }
 
 .score-label {

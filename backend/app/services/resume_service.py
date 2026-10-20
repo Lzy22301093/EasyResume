@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from app.llm.base import LLMProvider, Message, Role
+from app.llm.structured import parse_structured_json
 from app.models.schemas import (
     GapAnalysis,
     GapItem,
@@ -93,8 +94,7 @@ class ResumeService:
         response = await self._llm.chat(messages, temperature=0.3)
 
         try:
-            data = self._parse_json(response.content)
-            return Profile(**data)
+            return parse_structured_json(response.content, Profile)
         except Exception as e:
             return Profile(summary=f"解析失败: {e}")
 
@@ -136,13 +136,7 @@ category: skill, experience, education, soft_skill
         response = await self._llm.chat(messages, temperature=0.3)
 
         try:
-            data = self._parse_json(response.content)
-            return GapAnalysis(
-                overall_score=data.get("overall_score", 0),
-                gaps=[GapItem(**g) for g in data.get("gaps", [])],
-                strengths=data.get("strengths", []),
-                recommendations=data.get("recommendations", []),
-            )
+            return parse_structured_json(response.content, GapAnalysis)
         except Exception as e:
             return GapAnalysis(
                 overall_score=0,
@@ -216,11 +210,7 @@ category: skill, experience, education, soft_skill
         response = await self._llm.chat(messages, temperature=0.5)
 
         try:
-            data = self._parse_json(response.content)
-            return ResumeContent(
-                sections=[ResumeSection(**s) for s in data.get("sections", [])],
-                raw_text=data.get("raw_text", ""),
-            )
+            return parse_structured_json(response.content, ResumeContent)
         except Exception as e:
             return ResumeContent(
                 sections=[ResumeSection(title="错误", content=f"生成失败: {e}")],
@@ -331,20 +321,3 @@ category: skill, experience, education, soft_skill
             "content": content.model_dump(),
             "html": html,
         }
-
-    def _parse_json(self, text: str) -> dict:
-        """解析 LLM 返回的 JSON。"""
-        text = text.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1]
-        if text.endswith("```"):
-            text = text.rsplit("```", 1)[0]
-
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            import re
-            match = re.search(r"\{[\s\S]*\}", text)
-            if match:
-                return json.loads(match.group())
-            raise ValueError(f"无法解析 JSON: {text[:200]}")

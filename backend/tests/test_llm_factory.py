@@ -11,7 +11,7 @@ def test_create_provider():
     with patch("app.llm.settings.openai_api_key", "test-key"):
         provider = create_llm_provider()
     assert isinstance(provider, OpenAIProvider)
-    assert provider.model == "mimo-v2.5-pro"
+    assert provider.model == "mimo-v2.6-flash"
     # A3：SDK 客户端禁用内置重试（统一交给 with_retry），并设请求级超时
     assert provider.client.max_retries == 0
     assert provider.client.timeout == 110

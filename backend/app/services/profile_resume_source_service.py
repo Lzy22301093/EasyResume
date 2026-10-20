@@ -154,7 +154,7 @@ class ProfileResumeSourceService:
         return ResumeExperienceData(
             exp_type=exp_type,
             company=str(payload.get("company") or ""),
-            title=str(payload.get("title") or item.title or ""),
+            title=str(payload.get("title") or payload.get("role") or item.title or ""),
             start=str(payload.get("start") or ""),
             end=str(payload.get("end") or ""),
             current=bool(payload.get("current", False)),

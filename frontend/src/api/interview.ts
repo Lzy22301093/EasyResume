@@ -6,7 +6,16 @@ import type {
   InterviewStartParams,
   InterviewStartResponse,
   InterviewState,
+  JDAnalysis,
 } from '../types'
+
+export function analyzeInterviewJd(data: {
+  jd_text: string
+  job_title?: string
+  company?: string
+}) {
+  return client.post<JDAnalysis>('/interview/jd-analysis', data, { timeout: 180000 })
+}
 
 export function startInterview(data: InterviewStartParams) {
   // 生成第一道题会调用 LLM（实测约 50s+），必须放宽单请求超时，否则 30s 默认值会先超时被误判为"后端未启动"

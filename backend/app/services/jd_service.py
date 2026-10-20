@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from app.llm.base import LLMProvider, Message, Role
+from app.llm.structured import parse_structured_json
 from app.models.schemas import JDAnalysis, JDRequirement
 from app.tools.file_tools import FileParserTool, TextCleanerTool
 from app.tools.extract_tools import KeywordExtractorTool
@@ -38,8 +38,13 @@ class JDService:
         )
         return cleaned.data["text"] if cleaned.success else result.data["text"]
 
-    async def analyze(self, jd_text: str) -> JDAnalysis:
-        """分析 JD 文本，返回结构化结果。"""
+    async def analyze(self, jd_text: str, *, strict: bool = False) -> JDAnalysis:
+        """分析 JD 文本，返回结构化结果。
+
+        Args:
+            jd_text: JD 文本。
+            strict: True 时解析失败直接抛错；False 保持主流程兼容的降级结果。
+        """
         prompt = f"""请分析以下职位描述（JD），提取结构化信息。
 
 JD 内容：
@@ -68,20 +73,11 @@ importance 可选值：high, medium, low
         response = await self._llm.chat(messages, temperature=0.3)
 
         try:
-            data = self._parse_json(response.content)
-            return JDAnalysis(
-                job_title=data.get("job_title", ""),
-                company=data.get("company", ""),
-                requirements=[
-                    JDRequirement(**r) for r in data.get("requirements", [])
-                ],
-                nice_to_have=data.get("nice_to_have", []),
-                salary_range=data.get("salary_range"),
-                location=data.get("location"),
-                summary=data.get("summary", ""),
-            )
+            return parse_structured_json(response.content, JDAnalysis)
         except Exception as e:
-            # 解析失败时返回基础结构
+            if strict:
+                raise ValueError(f"JD 分析结果格式无效: {e}") from e
+            # 主工作流解析失败时保留基础结构，避免整条流程中断
             return JDAnalysis(
                 job_title="未知职位",
                 summary=f"JD 解析失败: {e}",
@@ -123,20 +119,3 @@ importance 可选值：high, medium, low
             "analysis": analysis.model_dump(),
             "keywords": keywords,
         }
-
-    def _parse_json(self, text: str) -> dict:
-        """解析 LLM 返回的 JSON。"""
-        text = text.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1]
-        if text.endswith("```"):
-            text = text.rsplit("```", 1)[0]
-
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            import re
-            match = re.search(r"\{[\s\S]*\}", text)
-            if match:
-                return json.loads(match.group())
-            raise ValueError(f"无法解析 JSON: {text[:200]}")

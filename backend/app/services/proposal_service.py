@@ -148,7 +148,11 @@ class ProfileProposalService:
 
         if p.change_type == "add_evidence":
             # 给已有条目挂证据
-            target = db.query(ProfileItem).filter(ProfileItem.id == p.target_profile_item_id).first()
+            target = (
+                db.query(ProfileItem)
+                .filter(ProfileItem.id == p.target_profile_item_id, ProfileItem.user_id == user_id)
+                .first()
+            )
             if target is None:
                 raise ProposalServiceError("关联的画像条目不存在")
             db.add(ProfileEvidence(
@@ -162,7 +166,11 @@ class ProfileProposalService:
             # add / update / feedback → 写条目
             item_type = _FEEDBACK_ITEM_TYPE if p.change_type == "feedback" else _FACT_ITEM_TYPE
             if p.target_profile_item_id:
-                item = db.query(ProfileItem).filter(ProfileItem.id == p.target_profile_item_id).first()
+                item = (
+                    db.query(ProfileItem)
+                    .filter(ProfileItem.id == p.target_profile_item_id, ProfileItem.user_id == user_id)
+                    .first()
+                )
                 if item is None:
                     raise ProposalServiceError("关联的画像条目不存在")
                 if after:

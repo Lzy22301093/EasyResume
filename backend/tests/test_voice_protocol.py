@@ -136,3 +136,22 @@ def test_wav_b64_to_data_url_prefix():
 def test_wav_b64_to_data_url_already_prefixed():
     existing = "data:audio/wav;base64,dGVzdA=="
     assert wav_b64_to_data_url(existing) == existing
+
+
+def test_parse_client_start_with_structured_reference_questions():
+    raw = json.dumps({
+        "type": "start",
+        "jd_analysis": {"job_title": "前端工程师"},
+        "referenced_questions": ["已有题目"],
+        "referenced_question_items": [{
+            "question": "如何优化 React 性能？",
+            "answer_points": ["识别瓶颈", "减少重渲染"],
+            "difficulty": "medium",
+        }],
+    }, ensure_ascii=False)
+    msg = parse_client_msg(raw)
+
+    assert msg is not None
+    assert msg.type == ClientMsgType.START
+    assert msg.referenced_questions == ["已有题目"]
+    assert msg.referenced_question_items[0]["answer_points"] == ["识别瓶颈", "减少重渲染"]

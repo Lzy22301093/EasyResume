@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_auth
+from app.api.upload_utils import DOCUMENT_MIME_TYPES, DOCUMENT_SUFFIXES, read_upload_limited, validate_upload
 from app.models.database import get_db
 from app.models.schemas import (
     DirectionConfirmRequest,
@@ -20,6 +21,12 @@ from app.models.schemas import (
     ProfileItemUpdate,
     ProfileResumeSource,
     DirectionRecommendationResult,
+    ResumeImportApplyRequest,
+    ResumeImportApplyResult,
+    ResumeImportFromLibraryRequest,
+    ResumeImportPreviewOut,
+    ProfileSyncToLibraryRequest,
+    ProfileSyncToLibraryResult,
     SoftInfoSaveRequest,
     SoftInfoSuggestion,
     StatusChange,
@@ -27,6 +34,10 @@ from app.models.schemas import (
 from app.services.direction_service import DirectionError, DirectionService
 from app.services.profile_form_service import ProfileFormService
 from app.services.profile_payload import load_profile_payload
+from app.services.profile_resume_import_service import (
+    ProfileResumeImportError,
+    ProfileResumeImportService,
+)
 from app.services.profile_resume_source_service import ProfileResumeSourceService
 from app.services.profile_service import ProfileService, ProfileServiceError
 from app.services.soft_info_service import SoftInfoError, SoftInfoService
@@ -313,3 +324,110 @@ async def save_profile_form(
         return form_service.save(db, user["id"], data)
     except ProfileServiceError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+# === 简历附件导入个人画像（抽取预览 + 确认写入） ===
+
+MAX_RESUME_IMPORT_BYTES = 20 * 1024 * 1024
+resume_import_service = ProfileResumeImportService()
+
+
+@router.post("/resume-import/preview", response_model=ResumeImportPreviewOut)
+async def preview_resume_import(
+    file: UploadFile = File(..., description="已有简历（PDF/DOCX/TXT/MD）"),
+    user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """上传简历附件 → 识别个人信息 → 返回待确认预览（不写入画像）。"""
+    import base64
+
+    from app.config import settings
+    from app.llm import create_llm_provider
+
+    validate_upload(file.filename, file.content_type, DOCUMENT_SUFFIXES, DOCUMENT_MIME_TYPES)
+    content = await read_upload_limited(file, MAX_RESUME_IMPORT_BYTES)
+    try:
+        llm = create_llm_provider()
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=f"简历识别能力不可用: {e}")
+
+    try:
+        return await resume_import_service.preview(
+            db,
+            user["id"],
+            llm,
+            file_content_b64=base64.b64encode(content).decode(),
+            filename=file.filename or "resume.txt",
+            model=settings.fast_model or None,
+        )
+    except ProfileResumeImportError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"简历识别失败: {e}")
+
+
+@router.post("/resume-import/preview-library", response_model=ResumeImportPreviewOut)
+async def preview_resume_import_from_library(
+    data: ResumeImportFromLibraryRequest,
+    user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """以简历库已有文档为源识别个人信息（免重新上传）。"""
+    from app.config import settings
+    from app.llm import create_llm_provider
+
+    try:
+        llm = create_llm_provider()
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=f"简历识别能力不可用: {e}")
+
+    try:
+        return await resume_import_service.preview_from_document(
+            db,
+            user["id"],
+            llm,
+            document_id=data.document_id,
+            version_id=data.version_id,
+            model=settings.fast_model or None,
+        )
+    except ProfileResumeImportError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"简历识别失败: {e}")
+
+
+@router.post("/resume-import/apply", response_model=ResumeImportApplyResult, status_code=201)
+async def apply_resume_import(
+    data: ResumeImportApplyRequest,
+    user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """把用户确认后的字段增量写入个人画像（不清空已有条目）。"""
+    try:
+        return resume_import_service.apply(db, user["id"], data)
+    except ProfileResumeImportError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except ProfileServiceError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/resume-import/sync-to-library", response_model=ProfileSyncToLibraryResult, status_code=201)
+async def sync_profile_to_library(
+    data: ProfileSyncToLibraryRequest,
+    user: dict = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """把已确认画像基本信息回写到简历库文档（生成新版本，可回滚）。"""
+    try:
+        result = resume_import_service.sync_to_library(
+            db,
+            user["id"],
+            document_id=data.document_id,
+            fields=data.fields,
+            note=data.note,
+        )
+    except ProfileResumeImportError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"同步到简历库失败: {e}")
+    return ProfileSyncToLibraryResult(**result)

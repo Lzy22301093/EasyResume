@@ -341,6 +341,17 @@ def _split_experiences(experiences: list[Any] | None) -> tuple[list[Any], list[A
     return work, projects
 
 
+def _looks_like_age(value: str) -> bool:
+    """识别误填进「出生日期」的年龄，如 21 / 21岁 / 21 周岁。"""
+    s = value.strip().replace("周岁", "").replace("岁", "").strip()
+    return s.isdigit() and 10 <= int(s) <= 99
+
+
+def _age_value(value: str) -> str:
+    s = value.strip().replace("周岁", "").replace("岁", "").strip()
+    return f"{s}岁"
+
+
 def assemble_with_template(
     *,
     basic: dict[str, Any],
@@ -363,6 +374,8 @@ def assemble_with_template(
     one_page = (page_preference or "one_page") == "one_page"
 
     # --- 基本信息（页眉数据源）---
+    # 格式约定：姓名一行；联系方式一行用「 · 」分隔，字段标签用「电话/邮箱/城市…」，
+    # 不要再包一层「联系方式：电话：」——导出层与工作台预览都会直接展示这两行。
     info_lines: list[str] = []
     name = str(basic.get("name") or "").strip()
     if name:
@@ -375,11 +388,22 @@ def assemble_with_template(
         ("gender", "性别"),
         ("birthday", "出生日期"),
     ):
-        v = basic.get(key)
-        if v:
-            contact_bits.append(f"{label}：{str(v).strip()}")
+        v = str(basic.get(key) or "").strip()
+        if not v:
+            continue
+        # 「21岁」等年龄误入出生日期：改标为年龄，避免「出生日期：21岁」
+        if key == "birthday" and _looks_like_age(v):
+            contact_bits.append(f"年龄：{_age_value(v)}")
+        elif key == "phone":
+            phone = v
+            for prefix in ("电话：", "电话:", "手机：", "手机:", "Tel:", "TEL:"):
+                if phone.startswith(prefix):
+                    phone = phone[len(prefix):].strip()
+            contact_bits.append(f"电话：{phone}")
+        else:
+            contact_bits.append(f"{label}：{v}")
     if contact_bits:
-        info_lines.append("联系方式：" + " · ".join(contact_bits))
+        info_lines.append(" · ".join(contact_bits))
     if info_lines:
         sections = [{"title": "基本信息", "content": "\n".join(info_lines)}]
     else:

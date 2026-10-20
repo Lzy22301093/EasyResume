@@ -111,12 +111,17 @@ class ProfileFormService:
         )
 
     def save(self, db: DBSession, user_id: int, data: ProfileFormSave) -> ProfileFormOut:
-        """把分阶段表单写入 profile_items（upsert，幂等），返回保存后的表单。"""
+        """把分阶段表单作为完整快照写入 profile_items，返回保存后的表单。
+
+        教育/奖项/社交/实习项目是向导托管列表：先清空旧快照再写入本次内容，
+        使前端删除动作能够持久化。基本信息仍按字段 upsert，保留稳定条目 ID。
+        """
+        self._validate_extra(data.extra or [])
+        self._clear_snapshot_categories(db, user_id)
+
         # 1) 基本信息
-        for form_key, value in (data.basic_info or {}).items():
-            title = BASIC_INFO_FIELDS.get(form_key or "")
-            if not title:
-                continue
+        for form_key, title in BASIC_INFO_FIELDS.items():
+            value = (data.basic_info or {}).get(form_key, "")
             text = (value or "").strip()
             self._profile.upsert_item(
                 db,
@@ -183,10 +188,14 @@ class ProfileFormService:
                 if exp_type not in {"internship", "project"}:
                     exp_type = "project"
                 content = self._format_experience(ext)
+                role = ext.role.strip()
                 payload: dict[str, Any] = {
                     "exp_type": exp_type,
-                    "title": title,
-                    "role": ext.role.strip(),
+                    # 表单 title 是公司名/项目名，role 是岗位/角色；
+                    # 下游简历统一读取 company + title（岗位/角色）。
+                    "company": title,
+                    "title": role or title,
+                    "role": role,
                     "start": ext.start.strip(),
                     "end": ext.end.strip(),
                     "current": bool(ext.current),
@@ -221,6 +230,52 @@ class ProfileFormService:
         return self.load(db, user_id)
 
     # ---- 内部 ----
+
+    @staticmethod
+    def _validate_extra(entries: list[ProfileExtraEntry]) -> None:
+        """在删除旧快照前完成所有 extra 校验，避免非法请求造成部分保存。"""
+        for ext in entries:
+            raw_cat = (ext.category or "").strip()
+            title = (ext.title or "").strip()
+            if not title:
+                continue
+            if raw_cat in {"internship", "project", "experience"}:
+                continue
+            if raw_cat not in EXTRA_CATEGORIES:
+                raise ProfileServiceError(
+                    f"其他分类非法: {raw_cat!r}，允许 {sorted(FORM_EXTRA_CATEGORIES)}"
+                )
+
+    @staticmethod
+    def _clear_snapshot_categories(db: DBSession, user_id: int) -> None:
+        """删除向导托管分类的旧快照，让删除动作持久化。
+
+        向导内的教育/奖项/社交/经历/技能/目标/软性/面试反馈均按完整快照管理：
+        本次表单写入什么就保留什么，未出现在表单中的旧条目会被清掉。
+        基本信息仍按字段 upsert，保留稳定条目 ID。
+        """
+        rows = (
+            db.query(ProfileItem)
+            .filter(
+                ProfileItem.user_id == user_id,
+                ProfileItem.category.in_(
+                    (
+                        "education",
+                        "award",
+                        "social",
+                        "experience",
+                        "skill",
+                        "target",
+                        "soft",
+                        "interview_feedback",
+                    )
+                ),
+            )
+            .all()
+        )
+        for item in rows:
+            db.delete(item)
+        db.commit()
 
     @staticmethod
     def _format_experience(ext: ProfileExtraEntry) -> str:

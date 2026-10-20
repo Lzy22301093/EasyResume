@@ -3,11 +3,19 @@ import { ref, computed } from 'vue'
 import { login as apiLogin, register as apiRegister, getMe } from '../api/auth'
 import type { Userinfo, LoginRequest, RegisterRequest } from '../types'
 
+function readStoredUser(): Userinfo | null {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem('user') || 'null')
+    return parsed && typeof parsed === 'object' ? (parsed as Userinfo) : null
+  } catch {
+    localStorage.removeItem('user')
+    return null
+  }
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
-  const user = ref<Userinfo | null>(
-    JSON.parse(localStorage.getItem('user') || 'null'),
-  )
+  const user = ref<Userinfo | null>(readStoredUser())
 
   const isLoggedIn = computed(() => !!token.value)
 

@@ -61,7 +61,7 @@
 
         <div v-if="hasReport" class="report-summary">
           <div class="score-badge">
-            <div class="score-num">{{ overallScore ?? '—' }}</div>
+            <div class="score-num">{{ overallScore ?? '—' }}<span class="score-max">/10</span></div>
             <div class="score-label">综合评分</div>
           </div>
           <div v-if="targetPosition || turnCount" class="report-meta">
@@ -411,6 +411,7 @@ async function act(id: number, action: string) {
   background: var(--color-accent-50); border: 2px solid var(--color-accent-200);
 }
 .score-num { font-size: var(--text-xl); font-weight: 700; color: var(--color-accent-600); }
+.score-max { font-size: var(--text-sm); font-weight: 500; color: var(--color-text-secondary); margin-left: 2px; }
 .score-label { font-size: 11px; color: var(--color-text-secondary); }
 .report-meta .meta-item { margin: 0 0 4px; font-size: var(--text-sm); color: var(--color-text-secondary); }
 .report-empty { text-align: center; color: var(--color-text-secondary); padding: var(--space-5); }

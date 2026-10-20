@@ -2,10 +2,40 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.llm.structured import parse_structured_json
+
 from .base import Tool, ToolResult
+
+
+class EntityMap(BaseModel):
+    """实体提取结构；已知字段强校验，兼容自定义实体类型。"""
+    model_config = ConfigDict(extra="allow")
+
+    name: str | None = None
+    company: str | None = None
+    title: str | None = None
+    skills: list[str] = Field(default_factory=list)
+    education: str | None = None
+    location: str | None = None
+
+
+class EntityExtractionResult(BaseModel):
+    entities: EntityMap
+
+
+class KeywordItem(BaseModel):
+    keyword: str
+    relevance: float = Field(default=0.5, ge=0, le=1)
+    category: str = "other"
+
+
+class KeywordExtractionResult(BaseModel):
+    keywords: list[KeywordItem] = Field(default_factory=list)
+    summary: str = ""
 
 
 class EntityExtractorTool(Tool):
@@ -83,23 +113,10 @@ class EntityExtractorTool(Tool):
         return self._parse_response(response)
 
     def _parse_response(self, response: str) -> dict:
-        """解析 LLM 响应。"""
-        # 尝试提取 JSON
-        try:
-            # 移除可能的 markdown 代码块标记
-            text = response.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1]
-            if text.endswith("```"):
-                text = text.rsplit("```", 1)[0]
-            return json.loads(text)
-        except json.JSONDecodeError:
-            # 尝试找到 JSON 部分
-            import re
-            match = re.search(r"\{[\s\S]*\}", response)
-            if match:
-                return json.loads(match.group())
-            raise ValueError(f"无法解析 LLM 响应: {response[:200]}")
+        """解析并校验 LLM 结构化响应。"""
+        return parse_structured_json(response, EntityExtractionResult).model_dump(
+            exclude_none=True
+        )
 
 
 class KeywordExtractorTool(Tool):
@@ -185,17 +202,5 @@ category 可选值：skill, technology, concept, role, industry, other
         return self._parse_response(response)
 
     def _parse_response(self, response: str) -> dict:
-        """解析 LLM 响应。"""
-        try:
-            text = response.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1]
-            if text.endswith("```"):
-                text = text.rsplit("```", 1)[0]
-            return json.loads(text)
-        except json.JSONDecodeError:
-            import re
-            match = re.search(r"\{[\s\S]*\}", response)
-            if match:
-                return json.loads(match.group())
-            raise ValueError(f"无法解析 LLM 响应: {response[:200]}")
+        """解析并校验 LLM 结构化响应。"""
+        return parse_structured_json(response, KeywordExtractionResult).model_dump()

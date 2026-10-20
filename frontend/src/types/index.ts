@@ -79,6 +79,20 @@ export interface ResumeContent {
   raw_text: string
 }
 
+export type TailoredResumeMode = 'conservative' | 'focused' | 'one_page'
+
+export interface TailoredSectionChange {
+  title: string
+  action: 'kept' | 'rewritten' | 'compressed' | 'hidden'
+  reason: string
+}
+
+export interface TailoredResumeResult {
+  content: ResumeContent
+  changes: TailoredSectionChange[]
+  fact_guard: string
+}
+
 // === 渲染配置 ===
 
 export interface RenderConfig {
@@ -311,6 +325,106 @@ export interface ProfileFormData {
   awards: string[]
   social: ProfileSocialEntry[]
   extra: ProfileExtraEntry[]
+}
+
+// === 简历附件导入个人画像 ===
+
+export interface ResumeImportBasicField {
+  key: string
+  value: string
+  quote?: string
+  confidence?: number
+}
+
+export interface ResumeImportEducation {
+  school: string
+  degree: string
+  major: string
+  start: string
+  end: string
+  gpa: string
+  courses: string
+  quote?: string
+  confidence?: number
+}
+
+export interface ResumeImportExperience {
+  exp_type: string
+  company: string
+  role: string
+  start: string
+  end: string
+  current: boolean
+  tech_stack: string
+  duty: string
+  achievement: string
+  quote?: string
+  confidence?: number
+}
+
+export interface ResumeImportSkill {
+  name: string
+  level: string
+  notes: string
+  quote?: string
+  confidence?: number
+}
+
+export interface ResumeImportExtract {
+  basic_fields: ResumeImportBasicField[]
+  summary: string
+  summary_quote: string
+  education: ResumeImportEducation[]
+  experiences: ResumeImportExperience[]
+  skills: ResumeImportSkill[]
+  awards: string[]
+  warnings: string[]
+  confidence: number
+}
+
+export interface ResumeImportPreview {
+  filename: string
+  text_length: number
+  extract: ResumeImportExtract
+  existing_basic: Record<string, string>
+  existing_titles: string[]
+}
+
+export interface ResumeImportApplyRequest {
+  source_filename?: string | null
+  basic_fields: ResumeImportBasicField[]
+  summary?: string
+  summary_quote?: string
+  education: ResumeImportEducation[]
+  experiences: ResumeImportExperience[]
+  skills: ResumeImportSkill[]
+  awards: string[]
+}
+
+export interface ResumeImportApplyResult {
+  written: Record<string, number>
+  skipped: number
+  message: string
+}
+
+/** 向导一键填充草稿（不落库，由向导最终 save） */
+export interface ResumeImportFormDraft {
+  basic_info: Record<string, string>
+  education: ProfileEducationEntry[]
+  awards: string
+  social: ProfileSocialEntry[]
+  extra: ProfileExtraEntry[]
+  summary?: string
+  warnings?: string[]
+  confidence?: number
+}
+
+export interface ProfileSyncToLibraryResult {
+  document_id: number
+  version_id: number
+  version: number
+  changed_fields: string[]
+  message: string
 }
 
 export interface ResumeEducationData {
@@ -604,6 +718,7 @@ export interface InterviewHistoryDetail {
 /** 本地暂存的进行中语音面试（刷新恢复用） */
 export interface ActiveVoiceInterviewStore {
   interviewId: string
+  jdAnalysis?: JDAnalysis
   company: string
   position: string
   jdText: string
@@ -671,6 +786,11 @@ export interface ResumeLibrarySectionBox {
   width: number
   height: number
   page?: number
+}
+
+export interface SectionManualEditRequest {
+  section_id: number
+  content: string
 }
 
 export interface ResumeLibrarySection {

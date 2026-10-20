@@ -1,15 +1,23 @@
 /*
- * Global Reset — 锁死根节点高度，保证 flex 子链正确传递
+ * Global Reset
+ *
+ * 高度链：html → body → #app 保持 100%，保证 App 壳层（简历生成等）
+ * 的 height:100% 能生效；body/#app 允许纵向滚动，页面内容超出一屏时可下滚。
+ * 注意：不要在 index.html 内联 style 上写 overflow:hidden。
  */
 
-/* 三件套：html / body / #app 全部撑满视口、禁止溢出滚动 */
 html,
 body,
 #app {
   height: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden;
+}
+
+body,
+#app {
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* 浏览器默认 body 有 8px margin，必须清零 */

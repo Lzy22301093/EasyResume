@@ -18,7 +18,7 @@
 ## 项目结构总览
 
 ```
-CareerAssistant/
+EasyResume/                          ← 仓库根（原名 CareerAssistant）
 ├── .env                    ← Docker 用的环境变量（docker-compose.yml 读取）
 ├── docker-compose.yml      ← 全栈编排（MySQL + Redis + Backend + Frontend）
 ├── backend/
@@ -32,7 +32,10 @@ CareerAssistant/
 │   ├── package.json
 │   └── src/                ← Vue 3 前端代码
 └── docs/
-    └── DEPLOYMENT.md       ← 本文档
+    ├── DEPLOYMENT.md       ← 本文档
+    ├── agents-contract.md  ← 能力单元契约
+    ├── DESIGN.md           ← 前端视觉契约
+    └── archive/            ← 历史设计/计划稿（不作现状依据）
 ```
 
 ---
@@ -53,8 +56,8 @@ CareerAssistant/
 
 | 文件 | 读取者 | 用途 |
 |------|--------|------|
-| `CareerAssistant/.env` | `docker-compose.yml` | Docker 容器的环境变量 |
-| `CareerAssistant/backend/.env` | 后端 `pydantic-settings` | 本机直接跑 `uvicorn` 时的配置 |
+| `EasyResume/.env` | `docker-compose.yml` | Docker 容器的环境变量 |
+| `EasyResume/backend/.env` | 后端 `pydantic-settings` | 本机直接跑 `uvicorn` 时的配置 |
 
 **核心环境变量（两个文件共用）：**
 
@@ -62,8 +65,8 @@ CareerAssistant/
 |------|------|--------|
 | `OPENAI_API_KEY` | LLM API 密钥 | 已配置（**不写死在代码里**，缺失时后端启动报错） |
 | `LLM_BASE_URL` | LLM API 地址 | `https://token-plan-cn.xiaomimimo.com/v1` |
-| `LLM_MODEL` | 主模型（生成类 Agent 用） | `mimo-v2.5-pro` |
-| `FAST_MODEL` | 快速模型（提取/评审/澄清类 Agent 用），为空回退 `LLM_MODEL` | `mimo-v2.5` |
+| `LLM_MODEL` | 主模型（生成类 Agent 用） | `mimo-v2.6-flash` |
+| `FAST_MODEL` | 快速模型（提取/评审/澄清类 Agent 用），为空回退 `LLM_MODEL` | `mimo-v2.6-flash` |
 | `GRAPH_TIMEOUT` | 整条工作流总超时（秒） | `600` |
 | `JWT_SECRET_KEY` | JWT 签名密钥 | 已配置 |
 | `DATABASE_URL` | MySQL 连接串（仅 backend/.env） | `mysql+pymysql://career:career@localhost:3307/career_assistant` |
@@ -80,7 +83,7 @@ CareerAssistant/
 ### 启动
 
 ```bash
-cd d:/Project/CareerAssistant
+cd EasyResume
 
 # 首次启动（构建镜像 + 启动全部容器）
 docker compose up -d
@@ -122,7 +125,7 @@ docker compose down -v
 ### 第一步：启动数据库
 
 ```bash
-cd d:/Project/CareerAssistant
+cd EasyResume
 
 # 只启动 MySQL 和 Redis
 docker compose up -d mysql redis
@@ -139,7 +142,7 @@ MySQL 容器会自动：
 ### 第二步：启动后端
 
 ```bash
-cd d:/Project/CareerAssistant/backend
+cd EasyResume/backend
 
 # 安装依赖（首次）
 pip install -r requirements.txt
@@ -153,7 +156,7 @@ python -m uvicorn app.main:app --reload --port 8000
 ### 第三步：启动前端
 
 ```bash
-cd d:/Project/CareerAssistant/frontend
+cd EasyResume/frontend
 
 # 安装依赖（首次）
 npm install
@@ -202,7 +205,7 @@ redis-server
 ### 第三步：后端
 
 ```bash
-cd d:/Project/CareerAssistant/backend
+cd EasyResume/backend
 pip install -r requirements.txt
 python -m uvicorn app.main:app --reload --port 8000
 ```
@@ -210,7 +213,7 @@ python -m uvicorn app.main:app --reload --port 8000
 ### 第四步：前端
 
 ```bash
-cd d:/Project/CareerAssistant/frontend
+cd EasyResume/frontend
 npm install
 npm run dev
 ```

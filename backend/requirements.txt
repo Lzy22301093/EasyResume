@@ -3,7 +3,7 @@ uvicorn[standard]==0.34.3
 pydantic-settings==2.9.1
 python-dotenv==1.1.0
 openai>=1.50.0
-sqlalchemy>=2.0.0
+sqlalchemy[asyncio]>=2.0.0
 redis>=5.0.0
 pymysql>=1.1.0
 pytest==8.4.1
@@ -26,3 +26,4 @@ passlib[bcrypt]>=1.7.4
 
 # 图编排
 langgraph>=0.4.0
+email-validator>=2.0.0
