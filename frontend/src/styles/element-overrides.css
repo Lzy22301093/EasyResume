@@ -8,11 +8,14 @@
  * 参考：DESIGN.md · Element Plus 主题覆盖方案
  */
 
+/* 同时钉在 html / :root，避免按需样式或运行时再注入默认主题把主色刷回蓝 */
+html,
 :root {
   /* ============================================================
      1. Color — Primary (陶土橙/珊瑚，替换默认蓝 #409eff)
      ============================================================ */
   --el-color-primary:          var(--color-accent-600);
+  --el-color-primary-rgb:      193, 95, 60;
   --el-color-primary-light-3:  var(--color-accent-500);
   --el-color-primary-light-5:  #e9a98b;
   --el-color-primary-light-7:  var(--color-accent-100);
@@ -135,10 +138,59 @@
   transition: all var(--duration-fast) var(--ease-default);
 }
 .el-button--primary {
+  --el-button-text-color: var(--color-white);
+  --el-button-bg-color: var(--color-accent-600);
+  --el-button-border-color: var(--color-accent-600);
+  --el-button-hover-text-color: var(--color-white);
   --el-button-hover-bg-color: var(--color-accent-500);
   --el-button-hover-border-color: var(--color-accent-500);
+  --el-button-active-text-color: var(--color-white);
   --el-button-active-bg-color: var(--color-accent-700);
   --el-button-active-border-color: var(--color-accent-700);
+  --el-button-disabled-text-color: var(--color-white);
+  --el-button-disabled-bg-color: var(--color-accent-400);
+  --el-button-disabled-border-color: var(--color-accent-400);
+  background-color: var(--color-accent-600);
+  border-color: var(--color-accent-600);
+  color: var(--color-white);
+}
+.el-button--primary:hover,
+.el-button--primary:focus {
+  background-color: var(--color-accent-500);
+  border-color: var(--color-accent-500);
+  color: var(--color-white);
+}
+.el-button--primary:active {
+  background-color: var(--color-accent-700);
+  border-color: var(--color-accent-700);
+}
+.el-button--primary.is-plain {
+  --el-button-text-color: var(--color-accent-600);
+  --el-button-bg-color: var(--color-accent-50);
+  --el-button-border-color: var(--color-accent-200);
+  --el-button-hover-text-color: var(--color-white);
+  --el-button-hover-bg-color: var(--color-accent-600);
+  --el-button-hover-border-color: var(--color-accent-600);
+  background-color: var(--color-accent-50);
+  border-color: var(--color-accent-200);
+  color: var(--color-accent-600);
+}
+.el-button--primary.is-plain:hover,
+.el-button--primary.is-plain:focus {
+  background-color: var(--color-accent-600);
+  border-color: var(--color-accent-600);
+  color: var(--color-white);
+}
+.el-button--primary.is-text,
+.el-button--primary.is-link {
+  color: var(--color-accent-600);
+  background: transparent;
+  border-color: transparent;
+}
+.el-button--primary.is-text:hover,
+.el-button--primary.is-link:hover {
+  color: var(--color-accent-700);
+  background: var(--color-accent-50);
 }
 
 /* ============================================================
@@ -256,6 +308,12 @@
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
+  background: var(--color-white);
+  box-shadow: 0 0 0 1px var(--color-gray-300) inset;
+}
+.el-input__wrapper:hover,
+.el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--color-gray-400) inset;
 }
 .el-textarea__inner {
   min-height: 88px;
@@ -265,6 +323,10 @@
 .el-select__wrapper.is-focused,
 .el-textarea__inner:focus {
   box-shadow: 0 0 0 1px var(--color-accent-600) inset;
+}
+.el-form-item__error {
+  color: var(--color-danger-600);
+  font-size: var(--text-xs);
 }
 .el-button {
   min-height: 36px;
@@ -276,7 +338,7 @@
 }
 
 /* ============================================================
-   Dialog — 圆润、柔和阴影
+   Dialog / MessageBox — 圆润、柔和阴影、主按钮跟品牌色
    ============================================================ */
 .el-dialog {
   --el-dialog-padding-primary: var(--space-6);
@@ -284,6 +346,7 @@
   box-shadow: var(--shadow-lg);
 }
 .el-dialog__title {
+  font-family: var(--font-display);
   font-size: var(--text-lg);
   line-height: var(--leading-tight);
 }
@@ -291,6 +354,105 @@
   font-size: var(--text-sm);
   line-height: var(--leading-relaxed);
   color: var(--color-text-secondary);
+}
+.el-dialog__footer {
+  padding-top: var(--space-4);
+}
+.el-dialog__footer .el-button--primary {
+  background-color: var(--color-accent-600);
+  border-color: var(--color-accent-600);
+}
+
+.el-message-box {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-6);
+}
+.el-message-box__title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+  color: var(--color-text-primary);
+}
+.el-message-box__content {
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--color-text-secondary);
+}
+.el-message-box__btns {
+  padding-top: var(--space-4);
+}
+.el-message-box__btns .el-button--primary {
+  background-color: var(--color-accent-600);
+  border-color: var(--color-accent-600);
+  color: var(--color-white);
+}
+.el-message-box__btns .el-button--primary:hover,
+.el-message-box__btns .el-button--primary:focus {
+  background-color: var(--color-accent-500);
+  border-color: var(--color-accent-500);
+}
+/* 取消/默认按钮：暖纸底 + 灰边，避免出现冷蓝浅底 */
+.el-message-box__btns .el-button--default {
+  background-color: var(--color-bg);
+  border-color: var(--color-gray-300);
+  color: var(--color-text-secondary);
+}
+.el-message-box__btns .el-button--default:hover,
+.el-message-box__btns .el-button--default:focus {
+  background-color: var(--color-gray-100);
+  border-color: var(--color-gray-400);
+  color: var(--color-text-primary);
+}
+
+/* MessageBox 状态图标：用暖语义色，去掉默认冷蓝 info */
+.el-message-box__status {
+  color: var(--color-accent-600);
+}
+.el-message-box--info .el-message-box__status {
+  color: var(--color-accent-600);
+}
+.el-message-box--success .el-message-box__status {
+  color: var(--color-success-600);
+}
+.el-message-box--warning .el-message-box__status {
+  color: var(--color-warning-600);
+}
+.el-message-box--error .el-message-box__status {
+  color: var(--color-danger-600);
+}
+
+/* 下拉 / 日期面板：暖白底 + 柔和边 */
+.el-select-dropdown,
+.el-picker-panel,
+.el-popper.is-light {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-gray-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+.el-select-dropdown__item.is-hovering {
+  background: var(--color-gray-50);
+}
+.el-select-dropdown__item.is-selected {
+  color: var(--color-accent-600);
+  font-weight: var(--weight-semibold);
+}
+.el-date-table td.current:not(.disabled) .el-date-table-cell__text {
+  background-color: var(--color-accent-600);
+}
+.el-date-table td.today .el-date-table-cell__text {
+  color: var(--color-accent-600);
+}
+.el-radio__input.is-checked .el-radio__inner,
+.el-checkbox__input.is-checked .el-checkbox__inner,
+.el-switch.is-checked .el-switch__core {
+  background-color: var(--color-accent-600);
+  border-color: var(--color-accent-600);
+}
+.el-radio__input.is-checked + .el-radio__label,
+.el-checkbox__input.is-checked + .el-checkbox__label {
+  color: var(--color-accent-600);
 }
 .el-card {
   border-radius: var(--radius-lg);

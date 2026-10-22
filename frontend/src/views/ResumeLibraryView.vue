@@ -855,11 +855,11 @@ async function saveManualEdit() {
   background: var(--color-bg);
 }
 .doc-card:hover {
-  border-color: var(--color-accent-400, #60a5fa);
+  border-color: var(--color-accent-400);
 }
 .doc-card.active {
-  border-color: var(--color-accent-600, #2563eb);
-  box-shadow: 0 0 0 1px var(--color-accent-600, #2563eb) inset;
+  border-color: var(--color-accent-600);
+  box-shadow: 0 0 0 1px var(--color-accent-600) inset;
 }
 .doc-card.deleted {
   cursor: default;
@@ -921,7 +921,7 @@ async function saveManualEdit() {
   flex-direction: column;
   min-height: 0;
   border-right: var(--border-light);
-  background: var(--color-bg-page, #f8fafc);
+  background: var(--color-bg-page);
 }
 .doc-header {
   padding: var(--space-3) var(--space-4);
@@ -960,7 +960,7 @@ async function saveManualEdit() {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  background-image: radial-gradient(var(--color-gray-200, #e5e7eb) 1px, transparent 1px);
+  background-image: radial-gradient(var(--color-gray-200) 1px, transparent 1px);
   background-size: 18px 18px;
 }
 .section-card {
@@ -1022,7 +1022,7 @@ async function saveManualEdit() {
 .export-err {
   margin: 4px 0 0;
   font-size: var(--text-xs);
-  color: var(--color-danger-600, #b91c1c);
+  color: var(--color-danger-600);
 }
 
 /* 右栏 */
@@ -1086,12 +1086,12 @@ async function saveManualEdit() {
   word-break: break-word;
 }
 .chat-msg.user .bubble {
-  background: var(--color-accent-600, #2563eb);
+  background: var(--color-accent-600);
   color: #fff;
   border-bottom-right-radius: var(--radius-sm);
 }
 .chat-msg.assistant .bubble {
-  background: var(--color-gray-50, #f9fafb);
+  background: var(--color-gray-50);
   border: var(--border-light);
   color: var(--color-text-primary);
   border-bottom-left-radius: var(--radius-sm);

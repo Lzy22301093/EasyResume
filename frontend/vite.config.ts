@@ -11,8 +11,11 @@ export default defineConfig({
   plugins: [
     vue(),
     // 模板中的 el-* 组件按需注册，避免把整套 Element Plus 打进主包。
+    // importStyle: false —— 主题 CSS 已在 main.ts 整包引入；
+    // 若保持默认 true，resolver 会按需再注入 theme-chalk/base.css，
+    // 把 --el-color-primary 重置回默认蓝，覆盖 element-overrides。
     Components({
-      resolvers: [ElementPlusResolver()],
+      resolvers: [ElementPlusResolver({ importStyle: false })],
       dts: false,
     }),
   ],
