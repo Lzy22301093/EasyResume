@@ -92,7 +92,7 @@ class InterviewStateResponse(BaseModel):
 class JdAnalysisRequest(BaseModel):
     """模拟面试准备阶段的 JD 分析请求。"""
 
-    jd_text: str = Field(..., min_length=1, max_length=20000, description="岗位 JD 文本")
+    jd_text: str = Field(default="", max_length=20000, description="岗位 JD 文本（可为空，仅用岗位名开面）")
     job_title: str = Field(default="", max_length=120, description="用户填写的目标岗位")
     company: str = Field(default="", max_length=120, description="用户填写的公司名称")
 
@@ -102,14 +102,29 @@ async def analyze_interview_jd(
     req: JdAnalysisRequest,
     user: dict = Depends(require_auth),
 ):
-    """真实分析面试 JD，不再由前端拼装演示数据。"""
+    """真实分析面试 JD；过短/仅岗位名时走启发式，避免无 JD 阻断面试。"""
+    title = req.job_title.strip()
+    company = req.company.strip()
+    jd = req.jd_text.strip()
     source_parts = []
-    if req.job_title.strip():
-        source_parts.append(f"目标岗位：{req.job_title.strip()}")
-    if req.company.strip():
-        source_parts.append(f"公司名称：{req.company.strip()}")
-    source_parts.append(f"职位描述：{req.jd_text.strip()}")
+    if title:
+        source_parts.append(f"目标岗位：{title}")
+    if company:
+        source_parts.append(f"公司名称：{company}")
+    if jd:
+        source_parts.append(f"职位描述：{jd}")
     source_text = "\n".join(source_parts)
+
+    # 无实质 JD（空 JD，或仅很短描述且已填岗位名）：构造基础分析，不调 LLM
+    # 保留「有 JD 文本」时走 LLM 校验路径（安全/严格性测试依赖）
+    if not jd or (len(jd) < 30 and title):
+        job_title = title or (jd[:40] if jd else "目标岗位")
+        return JDAnalysis(
+            job_title=job_title,
+            company=company,
+            summary=jd or f"{job_title}岗位面试",
+            requirements=[],
+        )
 
     try:
         service = JDService(llm=create_llm_provider())

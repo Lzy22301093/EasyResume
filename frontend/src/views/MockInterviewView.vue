@@ -555,10 +555,23 @@ function statusType(s: string): 'success' | 'info' | 'warning' | 'danger' {
 }
 
 async function analyzeJd(): Promise<JDAnalysis> {
+  const jd = jdText.value.trim()
+  const title = position.value.trim()
+  const companyVal = company.value.trim()
+  // JD 为可选：没有实质 JD 时本地构造，不请求 LLM（避免「分析失败」阻断开面）
+  if (jd.length < 30) {
+    return {
+      job_title: title || '目标岗位',
+      company: companyVal,
+      requirements: [],
+      nice_to_have: [],
+      summary: jd || `${title || '目标岗位'}岗位面试`,
+    } as JDAnalysis
+  }
   const res = await analyzeInterviewJd({
-    jd_text: jdText.value.trim() || `目标岗位：${position.value.trim()}`,
-    job_title: position.value.trim(),
-    company: company.value.trim(),
+    jd_text: jd,
+    job_title: title,
+    company: companyVal,
   })
   return res.data
 }
@@ -703,8 +716,15 @@ async function beginInterview() {
     // 稍等一拍，让按钮 loading 可见，再切到面试页
     await new Promise((r) => setTimeout(r, 120))
     phase.value = 'conduct'
-  } catch {
-    prepError.value = 'JD 分析失败，请检查岗位信息后重试'
+  } catch (e: unknown) {
+    const anyErr = e as {
+      response?: { status?: number; data?: { detail?: string } }
+      message?: string
+    }
+    const detail = anyErr?.response?.data?.detail
+    prepError.value = detail
+      ? `开始面试失败：${detail}`
+      : `开始面试失败：${anyErr?.message || '请稍后重试'}`
     ElMessage.error(prepError.value)
   } finally {
     preparing.value = false

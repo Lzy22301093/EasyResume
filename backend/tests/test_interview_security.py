@@ -178,3 +178,23 @@ async def test_interview_jd_analysis_rejects_invalid_llm_output(client: AsyncCli
 
     assert resp.status_code == 502
     assert "JD 分析结果格式无效" in resp.json()["detail"]
+
+
+async def test_interview_jd_analysis_short_jd_uses_heuristic(client: AsyncClient):
+    """仅填岗位名、JD 为空时不应调 LLM，直接可开始面试。"""
+    resp = await client.post(
+        "/api/interview/jd-analysis",
+        json={"jd_text": "目标岗位：全栈开发", "job_title": "全栈开发", "company": ""},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["job_title"] == "全栈开发"
+
+
+async def test_interview_jd_analysis_empty_jd_with_title(client: AsyncClient):
+    resp = await client.post(
+        "/api/interview/jd-analysis",
+        json={"jd_text": "", "job_title": "后端开发", "company": "字节"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["job_title"] == "后端开发"
