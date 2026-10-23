@@ -26,6 +26,26 @@ EasyResume 是一款面向求职全流程的 AI 工作台。以**个人画像**�
 
 ---
 
+## 界面预览
+
+以下截图来自本地实际运行的 EasyResume（前端 + 后端完整链路）：
+
+| 产品首页 | 个人画像 |
+|:---:|:---:|
+| ![产品首页](docs/images/01-home.png) | ![个人画像](docs/images/02-knowledge-base.png) |
+
+| 简历生成 | 简历工作台 |
+|:---:|:---:|
+| ![简历生成](docs/images/03-resume-generation.png) | ![简历工作台](docs/images/04-resume-library.png) |
+
+| 模拟面试 | 投递记录 |
+|:---:|:---:|
+| ![模拟面试](docs/images/06-mock-interview.png) | ![投递记录](docs/images/07-applications.png) |
+
+更多模块（登录、求职分析、功能介绍）见 [`docs/images/`](docs/images/)。
+
+---
+
 ## 核心能力
 
 - **个人画像** — 基本信息、教育、实习 / 项目、技能、投递方向与软性信息；条目带证据与确认状态，支持从已有简历导入（逐项确认后写入）
